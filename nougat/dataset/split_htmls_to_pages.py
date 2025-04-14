@@ -131,6 +131,7 @@ def process_paper(
             page_width=pdf.pages[0].mediabox.width,
             page_height=pdf.pages[0].mediabox.height,
         )
+
         # 保存原始的markdown文本（可选）
         if args.markdown:
             mmd_file = args.markdown / f"{fname}.mmd"

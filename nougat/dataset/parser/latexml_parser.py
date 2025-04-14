@@ -377,10 +377,14 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                 figure.id = child.attrs["id"]
             parse_latexml_children(child, figure)
         elif sv.match(".ltx_float_algorithm", child):
-            alg = parent.append(Algorithm())
-            if "id" in child.attrs:
-                alg.id = child.attrs["id"]
-            parse_latexml_children(child, alg)
+            alg = parent.find_parent(Algorithm)
+            if alg is not None:
+                parse_latexml_children(child, alg)
+            else:
+                alg = parent.append(Algorithm())
+                if "id" in child.attrs:
+                    alg.id = child.attrs["id"]
+                parse_latexml_children(child, alg)
         elif sv.match("figure.ltx_float", child):
             parse_latexml_children(child, parent)
         elif sv.match(".ltx_float_caption, .ltx_caption", child):
@@ -415,7 +419,9 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                 parse_latexml_children(child, para)
         elif sv.match(".ltx_listing", child):
             # 检查是否已经位于算法容器中
-            if not isinstance(parent, Algorithm):
+            # if not isinstance(parent, Algorithm):
+            alg = parent.find_parent(Algorithm)
+            if alg is None:
                 # 若外围未正确创建算法容器，则在此创建
                 alg = parent.append(Algorithm())
                 parse_latexml_children(child, alg)
