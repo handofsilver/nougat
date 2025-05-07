@@ -30,7 +30,6 @@ def find_main_tex_file(tex_dir):
     return None
 
 
-# target_root = "/data1/nzw/latex_pdf/generated_dataset"
 target_root = "/home/ninziwei/lyj/nougat/__test_0"
 
 
@@ -64,7 +63,7 @@ def check_bib_and_fix(html_file, bbl_dir):
                 break
 
 
-def walk_and_create(zip_file):
+def walk_and_create(zip_file, target_root=target_root):
     pdf_file = zip_file.replace(".zip", ".pdf")
 
     # target dirs and files
@@ -106,6 +105,6 @@ def walk_and_create(zip_file):
     return False
 
 
-walk_and_create("/home/ninziwei/lyj/nougat/__test_0/src/2402.00041.zip")
-walk_and_create("/home/ninziwei/lyj/nougat/__test_0/src/2303.00058.zip")
-walk_and_create("/home/ninziwei/lyj/nougat/__test_0/src/2303.00065.zip")
+# walk_and_create("/home/ninziwei/lyj/nougat/__test_0/src/2402.00041.zip")
+# walk_and_create("/home/ninziwei/lyj/nougat/__test_0/src/2303.00058.zip")
+# walk_and_create("/home/ninziwei/lyj/nougat/__test_0/src/2303.00065.zip")

@@ -6,7 +6,6 @@ LICENSE file in the root directory of this source tree.
 """
 
 import argparse
-from io import BytesIO
 import multiprocessing
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError
@@ -16,8 +15,6 @@ import os
 from pathlib import Path
 import logging
 import pypdf
-from PIL import Image
-import pytesseract
 from nougat.dataset.split_md_to_pages import *
 from nougat.dataset.parser.html2md import *
 from nougat.dataset.pdffigures import call_pdffigures
@@ -26,8 +23,6 @@ from nougat.dataset.patches.inject_coords_to_mmd import inject_coordinates
 logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-from charset_normalizer import from_path
 
 
 def figure_label_to_name(label_str: str) -> str:
@@ -140,14 +135,14 @@ def process_paper(
             logger.info(f"Markdown saved to {mmd_file}")
 
         # 调用新的分页函数（返回格式：pages, coinside_pages, bad_pages）
-        pages, coinside_pages, bad_pages = split_markdown(
+        doc_text_by_pages, page_spans, coinside_pages, bad_pages = split_markdown(
             mmd_text, pdf=pdf, figure_info=figure_info  # 传入完整的figure_info字典
         )
 
         # 保存分页结果
         os.makedirs(outpath, exist_ok=True)
         recognized_indices = []
-        for i, content in enumerate(pages):
+        for i, content in enumerate(doc_text_by_pages):
             if content.strip():
                 # 保存为页码命名的文件 (01.mmd, 02.mmd...)
                 # content = remove_invalid_figures(content, i, figure_info)

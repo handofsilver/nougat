@@ -39,23 +39,23 @@ def write_json(zip_files, size=10):
 
 def process_zip_file(zip_file):
     global generated_size
-    
+
     # 如果已完成，直接返回
     if done_event.is_set():
         return False
-        
+
     try:
         if walk_and_create(zip_file):
             # 使用锁保护对共享变量的修改
             with size_lock:
                 generated_size += 1
                 current_size = generated_size  # 在锁内获取当前值
-                
+
                 with open("success.txt", "a") as f:
                     f.write(zip_file + "\n")
-                
+
                 print(f"create data: {current_size}/{required_size}")
-                
+
                 # 检查是否达到目标
                 if current_size >= required_size:
                     done_event.set()  # 设置事件标志
@@ -83,51 +83,49 @@ def process_zip_file_with_retry(zip_file, max_retries=3):
 
 
 def main():
-    # select zip files and write to json
-    # zip_files = find_all_zips(latex_pdf_root)
-    # write_json(zip_files, size=15000)
-    # print("select files done!")
-
     # process zip files
     with open(target_json_file, "r") as f:
         data = json.load(f)
         zip_files = data["zip_files"]
 
     batch_size = 100
-    
+
     start_time = time.time()
     processed_count = 0
-    
+
     # 根据CPU核心数动态设置线程数
     cpu_count = psutil.cpu_count(logical=False)  # 物理核心数
     max_workers = max(1, min(cpu_count - 1, 10))  # 保留至少一个核心给系统
-    
+
     print(f"使用{max_workers}个工作线程 (系统有{cpu_count}个CPU核心)")
-    
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for i in range(0, len(zip_files), batch_size):
             batch_start = time.time()
-            
+
             subprocess.run("rm *.log", shell=True)
 
             if generated_size >= required_size or done_event.is_set():
                 break
-            
+
             # 根据CPU使用率动态调整并发任务数
             cpu_usage = psutil.cpu_percent(interval=0.5)
-            
+
             # 如果CPU使用率过高，减少此批次的任务数
             if cpu_usage > 90:
                 current_batch_size = batch_size // 2
                 print(f"CPU使用率高({cpu_usage}%)，减少批次大小至{current_batch_size}")
             else:
                 current_batch_size = batch_size
-                
+
             batch = zip_files[i : i + current_batch_size]
-            
+
             # 使用带重试的版本
-            futures = [executor.submit(process_zip_file_with_retry, zip_file) for zip_file in batch]
-            
+            futures = [
+                executor.submit(process_zip_file_with_retry, zip_file)
+                for zip_file in batch
+            ]
+
             for future in as_completed(futures):
                 try:
                     if future.result():
@@ -138,11 +136,11 @@ def main():
                         break
                 except Exception as e:
                     print(f"任务执行出错: {e}")
-                
+
                 # 检查是否已达到目标
                 if done_event.is_set():
                     break
-            
+
             # 如果已达到目标，跳出循环
             if done_event.is_set():
                 print("已达到目标数量，终止处理")
@@ -151,7 +149,7 @@ def main():
             processed_count += len(batch)
             batch_time = time.time() - batch_start
             elapsed = time.time() - start_time
-            
+
             # 打印详细的性能统计
             print(f"批次 {i//batch_size + 1} 完成:")
             print(f"  - 已处理: {processed_count}个文件")
@@ -167,5 +165,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

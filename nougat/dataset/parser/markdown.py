@@ -10,7 +10,6 @@ import re
 from uuid import uuid4
 from nougat.dataset.utils import normalize_tex
 from nougat.dataset.parser.document import *
-from nougat.dataset.parser.latexml_parser import _clean_html_whitespace
 from unidecode import unidecode
 
 SUPERSCRIPT_MAP = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
@@ -344,7 +343,7 @@ def format_element(
 
     if isinstance(element, AuthorNote):
         parts = format_children(element, keep_refs)
-        return "\n[AUTHOR_NOTE]" + "".join(parts) + "[ENDAUTHOR_NOTE]"
+        return "\n[THANK_NOTE]" + "".join(parts) + "[ENDTHANK_NOTE]"
 
     if isinstance(element, AuthorList):
         parts = format_children(element, keep_refs)

@@ -286,7 +286,7 @@ def clear_semantic_symbol(text):
     for pattern, replacement in escaped_brackets.items():
         text = re.sub(re.escape(pattern), replacement, text)
 
-    # 处理各种数学字体样式命令，保留括号内的内容
+    # 处理数学字体样式命令，保留括号内的内容
     # \mathfrak, \mathcal, \mathbb, \mathsf, \mathtt, \mathbf, \mathit 等
     text = re.sub(
         r"\\math(?:frak|cal|bb|sf|tt|bf|it|rm|scr|normal)\{([^}]*)\}", r"\1", text
@@ -318,11 +318,24 @@ def clear_semantic_symbol(text):
     # 移除数学标记的各种括号，保留带转义符的括号，移除掉表示数学公式编码的普通括号
     text = re.sub(r"\\", "", text)
 
-    # 处理上标
-    text = re.sub(r"\^(-?[0-9]+)", r"\1", text)
+    # 改进：递归处理花括号，直到没有更多变化
+    old_text = ""
+    while old_text != text:
+        old_text = text
+        # 处理上标中的花括号
+        text = re.sub(r"\^\{([^{}]*)\}", r"^\1", text)
+        # 处理下标中的花括号
+        text = re.sub(r"_\{([^{}]*)\}", r"_\1", text)
+        # 移除嵌套的花括号
+        text = re.sub(r"\{([^{}]*)\}", r"\1", text)
 
-    # 移除格式化括号，但保留内容
-    text = re.sub(r"\{([^{}]*)\}", r"\1", text)
+    # 处理上标（更通用的方式，不仅仅是数字）
+    text = re.sub(r"\^(\(.*?\)|\w)", r"\1", text)
+    text = re.sub(r"\^", "", text)  # 清除剩余的上标符号
+
+    # 处理下标
+    text = re.sub(r"_(\(.*?\)|\w)", r"\1", text)
+    text = re.sub(r"_", "", text)  # 清除剩余的下标符号
 
     # 将临时标记恢复为原始括号
     reverse_escaped_brackets = {
@@ -337,9 +350,6 @@ def clear_semantic_symbol(text):
     for pattern, replacement in reverse_escaped_brackets.items():
         text = text.replace(pattern, replacement)
 
-    # 移除上下标符号
-    text = re.sub(r"\^", "", text)
-    text = re.sub(r"_", "", text)
     return text
 
 
@@ -408,4 +418,7 @@ if __name__ == "__main__":
     # print('公式还原后：', tmp)
     # print(encode_formula_in_md(text))
 
-    test_encode_formula_in_md()
+    # test_encode_formula_in_md()
+
+    txt = 'such as \(\|{\mathbf{Z}}\odot({\mathbf{Y}}-{\mathbf{B}}{\mathbf{S}}^{({\mathcal{L}})})\|\)", which will influence the learned and matrices via backpropagation.'
+    print(encode_formula_in_md(txt))
