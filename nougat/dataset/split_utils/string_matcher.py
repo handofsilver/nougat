@@ -9,12 +9,19 @@ def build_partial_match_table(pattern):
     return table
 
 
-def get_char_match_score(content, query, table={}, return_position=False, debug=False):
+def get_char_match_score(
+    content: str,
+    query: str,
+    table={},
+    max_gap=3,  # 不连续位置的最大间隔
+    max_discontinuities=3,  # 允许的最大不连续次数
+    return_position=False,
+    debug=False,
+):
     """
-    计算 query 在 content 中的匹配度
-    计算 query 在 content 中的最长匹配子序列的长度，要求匹配结果中不连续位置的间隔不能超过max_gap
-    如果匹配结果中匹配位置不连续的次数不超过max_discontinuities，则认为匹配结果有效
-    用匹配到的最长子序列长度除以 query 的长度，得到匹配度
+    计算 query 在 content 中的最长匹配子序列的长度，要求匹配结果中不连续位置的间隔不能超过max_gap;
+    如果匹配结果中匹配位置不连续的次数不超过max_discontinuities，则认为匹配结果有效;
+    用匹配到的最长子序列长度除以 query 的长度，得到匹配度;
     使用改进的算法，先找到可能的起始匹配位置，再进行详细匹配
     返回值: (匹配分数, 开始位置, 结束位置)
     """
@@ -32,9 +39,6 @@ def get_char_match_score(content, query, table={}, return_position=False, debug=
             return 1.0, start_pos, end_pos
         else:
             return 1.0
-
-    max_gap = 3  # 不连续位置的最大间隔
-    max_discontinuities = 3  # 允许的最大不连续次数
 
     # 构建query的部分匹配表
     if table:
