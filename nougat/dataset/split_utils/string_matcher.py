@@ -12,7 +12,6 @@ def build_partial_match_table(pattern):
 def get_char_match_score(
     content: str,
     query: str,
-    table={},
     max_gap=3,  # 不连续位置的最大间隔
     max_discontinuities=3,  # 允许的最大不连续次数
     return_position=False,
@@ -41,10 +40,7 @@ def get_char_match_score(
             return 1.0
 
     # 构建query的部分匹配表
-    if table:
-        match_table = table
-    else:
-        match_table = build_partial_match_table(query)
+    match_table = build_partial_match_table(query)
 
     # 找到所有可能的起始匹配位置
     potential_starts = []

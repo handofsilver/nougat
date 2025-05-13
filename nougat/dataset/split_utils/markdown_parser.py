@@ -1,11 +1,12 @@
 import re
 from typing import List
-from markdown_encoder import encode_formula_in_md
+from nougat.dataset.split_utils.markdown_encoder import encode_formula_in_md
+
 
 def parse_markdown(doc: str) -> str:
     """
     解析Markdown文档，提取文本内容
-    
+
     1. 清洗掉所有特殊标记标签的内容：
        - [TABLE:.*] 和 [ENDTABLE] 之间
        - [FIGURE:.*] 和 [ENDFIGURE] 之间
@@ -15,7 +16,7 @@ def parse_markdown(doc: str) -> str:
     2. 提取所有 [TEXT] 和 [ENDTEXT] 之间的文本
     3. 用换行符连接所有提取的文本
     """
-    
+
     # 清洗特殊标签之间的内容
     doc = re.sub(r"\[TABLE:.*?\].*?\[ENDTABLE\]", "", doc, flags=re.DOTALL)
     doc = re.sub(r"\[FIGURE:.*?\].*?\[ENDFIGURE\]", "", doc, flags=re.DOTALL)
@@ -57,20 +58,21 @@ def parse_markdown(doc: str) -> str:
             pos = len(doc)
 
     doc_text = "\n".join(result).strip()
-    
-    # 如果提取的文本为空，则返回原始文档    
+
+    # 如果提取的文本为空，则返回原始文档
     if not doc_text:
-        doc_text = doc 
-        
+        doc_text = doc
+
     # 清理[FORMULA]和[ENDFORMULA]
     doc_text = doc_text.replace("[FORMULA]", "").replace("[ENDFORMULA]", "")
-    
+
     return doc_text
+
 
 def parse_markdown_lines(doc: str) -> List[str]:
     """
     解析Markdown文档并返回行列表
-    
+
     1. 调用 encode_formula_in_md 处理文档中的公式
     2. 调用 parse_markdown 提取文本内容
     3. 将文本分割成行并清理
@@ -80,10 +82,13 @@ def parse_markdown_lines(doc: str) -> List[str]:
 
     # 获得文档中每一行文本内容
     doc_lines = doc_text.split("\n")
-    doc_lines = [line.strip() for line in doc_lines if line.strip()] # 清理空白字符
-    doc_lines = [line for line in doc_lines if line != "[text]" and line != "[endtext]"] # 清理[text]和[endtext]
+    doc_lines = [line.strip() for line in doc_lines if line.strip()]  # 清理空白字符
+    doc_lines = [
+        line for line in doc_lines if line != "[text]" and line != "[endtext]"
+    ]  # 清理[text]和[endtext]
 
     return doc_lines
+
 
 if __name__ == "__main__":
     test_mmd = "/home/ninziwei/lyj/nougat/__test_0/markdown/2303.00058.mmd"

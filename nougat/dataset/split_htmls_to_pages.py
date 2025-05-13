@@ -5,20 +5,27 @@ This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
 
+import os
+import re
+import json
+import htmlmin
 import argparse
 import multiprocessing
+import logging
+import pypdf
+from typing import Tuple, List
+from pathlib import Path
+from bs4 import BeautifulSoup
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError
 from tqdm import tqdm
-from typing import Tuple, List
-import os
-from pathlib import Path
-import logging
-import pypdf
-from nougat.dataset.split_md_to_pages import *
-from nougat.dataset.parser.html2md import *
+from nougat.dataset.rasterize import rasterize_paper
+from nougat.dataset.split_md_to_pages import split_markdown
+from nougat.dataset.parser.markdown import format_document
+from nougat.dataset.parser.html2md import parse_latexml
 from nougat.dataset.pdffigures import call_pdffigures
 from nougat.dataset.patches.inject_coords_to_mmd import inject_coordinates
+
 
 logging.basicConfig()
 logger = logging.getLogger()
@@ -70,11 +77,7 @@ def build_page_to_figs(fig_info):
 
 
 def process_paper(
-    fname: str,
-    pdf_file: Path,
-    html_file: Path,
-    json_file: Path,
-    args: argparse.Namespace,
+    fname: str, pdf_file: Path, html_file: Path, json_file: Path, args: argparse.Namespace
 ) -> Tuple[int, int]:
     """
     修改后的处理流程，适配新的 split_md_to_pages API
@@ -274,30 +277,17 @@ if __name__ == "__main__":
     parser.add_argument("--pdfs", type=Path, help="PDF files", required=True)
     parser.add_argument("--out", type=Path, help="Output dir", required=True)
     parser.add_argument("--recompute", action="store_true", help="recompute all splits")
+    parser.add_argument("--markdown", type=Path, help="Markdown output dir", default=None)
+    parser.add_argument("--figure", type=Path, help="Figure info JSON dir")
     parser.add_argument(
-        "--markdown", type=Path, help="Markdown output dir", default=None
-    )
-    parser.add_argument(
-        "--figure",
-        type=Path,
-        help="Figure info JSON dir",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=multiprocessing.cpu_count(),
-        help="How many processes to use",
+        "--workers", type=int, default=multiprocessing.cpu_count(), help="How many processes to use"
     )
     parser.add_argument(
         "--dpi", type=int, default=96, help="What resolution the pages will be saved at"
     )
+    parser.add_argument("--timeout", type=float, default=120, help="max time per paper in seconds")
     parser.add_argument(
-        "--timeout", type=float, default=120, help="max time per paper in seconds"
-    )
-    parser.add_argument(
-        "--tesseract",
-        action="store_true",
-        help="Tesseract OCR prediction for each page",
+        "--tesseract", action="store_true", help="Tesseract OCR prediction for each page"
     )
     args = parser.parse_args()
     print(args)

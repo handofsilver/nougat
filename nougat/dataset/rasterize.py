@@ -51,11 +51,7 @@ def rasterize_paper(
         if pages is None:
             pages = range(len(pdf_doc))
 
-        renderer = pdf_doc.render(
-            pypdfium2.PdfBitmap.to_pil,
-            page_indices=pages,
-            scale=dpi / 72,
-        )
+        renderer = pdf_doc.render(pypdfium2.PdfBitmap.to_pil, page_indices=pages, scale=dpi / 72)
 
         for i, image in zip(pages, renderer):
             if return_pil:
@@ -80,9 +76,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dpi", type=int, default=96, help="What resolution the pages will be saved"
     )
-    parser.add_argument(
-        "--pages", type=int, nargs="+", default=None, help="list of page numbers"
-    )
+    parser.add_argument("--pages", type=int, nargs="+", default=None, help="list of page numbers")
     args = parser.parse_args()
     if args.pages:
         args.pages = [p - 1 for p in args.pages]

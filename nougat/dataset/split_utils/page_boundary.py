@@ -1,226 +1,359 @@
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, TypeVar, Optional
 from nougat.dataset.split_utils.text_cleaner import squeeze_text
-from nougat.dataset.split_utils.string_matcher import get_char_match_score, build_partial_match_table
+from nougat.dataset.split_utils.string_matcher import get_char_match_score
+from dataclasses import dataclass
+from itertools import chain
+from enum import Enum, auto
+
+# 定义类型别名，使代码更易读
+PageIndex = int  # 页面索引类型
+PageSpan = Tuple[PageIndex, PageIndex]  # 页面范围类型
+PagePair = Tuple[PageIndex, PageIndex]  # 页面对类型
+
+
+class PageMatchStatus(Enum):
+    """页面匹配状态"""
+
+    NO_LINES = -1  # 页面没有有效行
+    BOTH_MISSING = -2  # 页面头尾都失配
+    HEAD_MISSING = -3  # 页面头失配
+    TAIL_MISSING = -4  # 页面尾失配
+    BOTH_MATCHED = 1  # 页面头尾都匹配成功
+    ORDER_WRONG = -5  # 页面头尾匹配但顺序错误
+
+
+@dataclass
+class PageBoundaryResult:
+    """页面边界处理结果"""
+
+    page_spans: List[PageSpan]  # 每页的文本范围
+    coincident_pages: List[PagePair]  # 重合的页面对
+    bad_pages: List[PageIndex]  # 需要丢弃的页码
+
+
+@dataclass
+class BoundaryMatchResult:
+    """边界匹配结果"""
+
+    status: PageMatchStatus  # 匹配状态
+    start_pos: PageIndex  # 处理后的开始位置
+    end_pos: PageIndex  # 处理后的结束位置
+    last_end: PageIndex  # 更新后的last_end
+    should_skip: bool  # 是否应该跳过当前页面
+
+
+def _check_page_coincidence(
+    current_end: PageIndex, next_start: PageIndex, current_page: PageIndex
+) -> Optional[PagePair]:
+    """
+    检查两个页面是否重合
+
+    Args:
+        current_end: 当前页的结束位置
+        next_start: 下一页的开始位置
+        current_page: 当前页码
+
+    Returns:
+        Optional[PagePair]: 如果页面重合，返回(当前页, 下一页)的页码对；否则返回None
+    """
+    if current_end == next_start:
+        return (current_page, current_page + 1)
+    return None
+
+
+def _get_match_status(start_idx: PageIndex, end_idx: PageIndex) -> PageMatchStatus:
+    """
+    根据开始和结束索引确定匹配状态
+
+    Args:
+        start_idx: 开始索引
+        end_idx: 结束索引
+
+    Returns:
+        PageMatchStatus: 匹配状态
+    """
+    if start_idx == -1:
+        return PageMatchStatus.NO_LINES
+    if start_idx == -2 and end_idx == -2:
+        return PageMatchStatus.BOTH_MISSING
+    if start_idx < 0 and end_idx >= 0:
+        return PageMatchStatus.HEAD_MISSING
+    if start_idx >= 0 and end_idx < 0:
+        return PageMatchStatus.TAIL_MISSING
+    if end_idx >= start_idx:
+        return PageMatchStatus.BOTH_MATCHED
+    return PageMatchStatus.ORDER_WRONG
+
+
+def _handle_page_boundaries(
+    start_idx: PageIndex,
+    end_idx: PageIndex,
+    last_end_idx: PageIndex,
+    next_start_idx: PageIndex,
+    last_end: PageIndex,
+    is_first_page: bool,
+) -> BoundaryMatchResult:
+    """
+    处理单个页面的边界情况
+
+    Args:
+        doc_lines: 文档行列表
+        start_idx: 当前页的开始索引
+        end_idx: 当前页的结束索引
+        last_end_idx: 上一页的结束索引
+        next_start_idx: 下一页的开始索引
+        last_end: 上一页的实际结束位置
+        is_first_page: 是否是第一页
+
+    Returns:
+        BoundaryMatchResult: 边界匹配结果
+    """
+    status = _get_match_status(start_idx, end_idx)
+
+    # 根据不同的匹配状态处理边界
+    if status == PageMatchStatus.NO_LINES:
+        return BoundaryMatchResult(
+            status=status, start_pos=-1, end_pos=-1, last_end=last_end, should_skip=True
+        )
+
+    if status == PageMatchStatus.BOTH_MISSING:
+        return BoundaryMatchResult(
+            status=status, start_pos=-2, end_pos=-2, last_end=last_end, should_skip=False
+        )
+
+    if status == PageMatchStatus.HEAD_MISSING:
+        if is_first_page:
+            # 第一页特殊处理：如果头失配，使用0作为开始位置
+            return BoundaryMatchResult(
+                status=status, start_pos=0, end_pos=end_idx, last_end=end_idx, should_skip=False
+            )
+        if last_end_idx >= 0:
+            # 如果上一页正常，从上一页结束位置后开始
+            return BoundaryMatchResult(
+                status=status,
+                start_pos=last_end + 1,
+                end_pos=end_idx,
+                last_end=end_idx,
+                should_skip=False,
+            )
+        # 如果上一页无效，使用上一页的结束位置
+        return BoundaryMatchResult(
+            status=status, start_pos=last_end, end_pos=end_idx, last_end=end_idx, should_skip=False
+        )
+
+    if status == PageMatchStatus.TAIL_MISSING:
+        if next_start_idx > 0:
+            # 如果下一页正常，使用下一页开始位置前作为结束
+            return BoundaryMatchResult(
+                status=status,
+                start_pos=start_idx,
+                end_pos=next_start_idx - 1,
+                last_end=next_start_idx - 1,
+                should_skip=False,
+            )
+        # 如果下一页无效，使用当前开始位置作为结束
+        return BoundaryMatchResult(
+            status=status,
+            start_pos=start_idx,
+            end_pos=start_idx,
+            last_end=start_idx,
+            should_skip=False,
+        )
+
+    if status == PageMatchStatus.BOTH_MATCHED:
+        return BoundaryMatchResult(
+            status=status, start_pos=start_idx, end_pos=end_idx, last_end=end_idx, should_skip=False
+        )
+
+    # PageMatchStatus.ORDER_WRONG
+    return BoundaryMatchResult(
+        status=status, start_pos=last_end, end_pos=last_end, last_end=last_end, should_skip=False
+    )
+
+
+def get_span_of_pages(
+    doc_lines: List[str], page_start_positions: List[PageIndex], page_end_positions: List[PageIndex]
+) -> PageBoundaryResult:
+    """
+    获取每一页的文本范围，并处理页面边界情况
+
+    Args:
+        doc_lines: 文档行列表
+        page_start_positions: 每一页的开始行索引
+        page_end_positions: 每一页的结束行索引
+
+    Returns:
+        PageBoundaryResult: 包含页面范围、重合页面和无效页面的结果对象
+
+    Example:
+        >>> doc_lines = ["第1页", "第2页", "第3页"]
+        >>> starts = [0, 1, 2]
+        >>> ends = [0, 1, 2]
+        >>> result = get_span_of_pages(doc_lines, starts, ends)
+        >>> print(result.page_spans)  # [(0,0), (1,1), (2,2)]
+        >>> print(result.coincident_pages)  # []
+        >>> print(result.bad_pages)  # []
+    """
+    # 初始化结果
+    result = PageBoundaryResult(
+        page_spans=[],  # 存储每页的文本范围
+        coincident_pages=[],  # 存储重合的页码对
+        bad_pages=[],  # 存储需要丢弃的页码
+    )
+
+    # 准备辅助参数
+    last_end: PageIndex = 0
+    last_end_positions = [-1] + page_end_positions[:-1]  # 上一页的结束位置列表
+    next_start_positions = page_start_positions[1:] + [len(doc_lines)]  # 下一页的开始位置列表
+
+    # 处理每一页的边界
+    for i, (start_idx, end_idx, last_end_idx, next_start_idx) in enumerate(
+        zip(page_start_positions, page_end_positions, last_end_positions, next_start_positions)
+    ):
+        # 处理当前页的边界
+        match_result = _handle_page_boundaries(
+            start_idx=start_idx,
+            end_idx=end_idx,
+            last_end_idx=last_end_idx,
+            next_start_idx=next_start_idx,
+            last_end=last_end,
+            is_first_page=(i == 0),
+        )
+
+        # 如果应该跳过当前页面，直接添加占位结果
+        if match_result.should_skip:
+            result.page_spans.append((-1, -1))
+            continue
+
+        # 更新结果
+        result.page_spans.append((match_result.start_pos, match_result.end_pos))
+        if match_result.status in [PageMatchStatus.BOTH_MISSING, PageMatchStatus.ORDER_WRONG]:
+            result.bad_pages.append(i)
+
+        # 检查页面是否重合
+        if i < len(page_start_positions) - 1:
+            if coincident := _check_page_coincidence(
+                current_end=match_result.end_pos,
+                next_start=page_start_positions[i + 1],
+                current_page=i,
+            ):
+                result.coincident_pages.append(coincident)
+
+        # 更新last_end
+        last_end = match_result.last_end
+
+    return result
+
+
+def _match_page_boundary(
+    doc_lines: List[str],
+    query_line: str,
+    pointer: PageIndex,
+    window_size: int,
+    score_thresh: float,
+    min_window_size: int,
+) -> Tuple[PageIndex, PageIndex, int]:
+    """
+    匹配单个页面边界
+
+    Args:
+        doc_lines: 清理后的文档行
+        query_line: 要匹配的查询行
+        pointer: 当前指针位置
+        window_size: 当前窗口大小
+        score_thresh: 匹配分数阈值
+        min_window_size: 最小窗口大小
+
+    Returns:
+        Tuple[PageIndex, PageIndex, int]: (匹配位置, 新的指针位置, 新的窗口大小)
+    """
+    # 第一次尝试：使用当前窗口
+    window_end = min(pointer + window_size, len(doc_lines))
+    scores = [
+        get_char_match_score(content=doc_line, query=query_line)
+        for doc_line in doc_lines[pointer:window_end]
+    ]
+
+    if scores and max(scores) > score_thresh:
+        match_idx = pointer + np.argmax(scores)
+        return match_idx, match_idx + 1, min_window_size
+
+    # 第二次尝试：扩大窗口
+    window_end = min(pointer + window_size + min_window_size, len(doc_lines))
+    scores = [
+        get_char_match_score(content=doc_line, query=query_line)
+        for doc_line in doc_lines[pointer:window_end]
+    ]
+
+    if scores and max(scores) > score_thresh:
+        match_idx = pointer + np.argmax(scores)
+        return match_idx, match_idx + 1, min_window_size
+
+    return -2, pointer, window_size + min_window_size
+
 
 def locate_page_boundaries(
     valid_lines_of_pages: List[List[str]],
     doc_lines: List[str],
     min_window_size: int = 30,
     score_thresh: float = 0.85,
-    debug: bool = False,
-) -> Tuple[List[int], List[int]]:
+) -> Tuple[List[PageIndex], List[PageIndex]]:
     """
     定位页面的边界
 
     Args:
-        valid_lines_of_pages: 每一页的有效行
-        doc_lines: 文档行
+        valid_lines_of_pages: 每一PDF页的有效行
+        doc_lines: Markdown文档行
         min_window_size: 最小窗口大小
         score_thresh: 匹配分数阈值
-        debug: 是否开启调试模式
-    
-    Returns:
-        page_start_positions: 每一页的开始行索引
-        page_end_positions: 每一页的结束行索引
-    """
-    start_pointer, end_pointer = 0, 0
-    start_window_size, end_window_size = min_window_size, min_window_size
-    page_start_positions = []  # 该页第一行文本在 doc_lines 中的索引
-    page_end_positions = []  # 该页最后一行文本在 doc_lines 中的索引
 
+    Returns:
+        Tuple[List[PageIndex], List[PageIndex]]:
+            - page_start_positions: 每一Markdown页的开始行索引
+            - page_end_positions: 每一Markdown页的结束行索引
+    """
+    # 初始化
+    start_pointer = end_pointer = 0
+    start_window_size = end_window_size = min_window_size
+    page_start_positions = []  # 该Markdown页第一行文本在 doc_lines 中的索引
+    page_end_positions = []  # 该Markdown页最后一行文本在 doc_lines 中的索引
+
+    # 预处理：清理空白字符
     strip_doc_lines = [squeeze_text(line) for line in doc_lines]
-    
+
+    # 处理每一页
     for page_lines in valid_lines_of_pages:
-        # 如果该页没有行，则认为没有有效位置
+        # 处理空页
         if not page_lines:
             page_start_positions.append(-1)
             page_end_positions.append(-1)
             continue
 
-        # 获得该页的开始和结束行
+        # 获取并清理页面边界行
         start_line = squeeze_text(page_lines[0])
         end_line = squeeze_text(page_lines[-1])
 
-        start_line_table = build_partial_match_table(start_line)
-        end_line_table = build_partial_match_table(end_line)
+        # 匹配开始边界
+        start_idx, start_pointer, start_window_size = _match_page_boundary(
+            strip_doc_lines,
+            start_line,
+            start_pointer,
+            start_window_size,
+            score_thresh,
+            min_window_size,
+        )
+        page_start_positions.append(start_idx)
 
-        # 计算开始行的匹配分数
-        start_window_end = min(start_pointer + start_window_size, len(strip_doc_lines))
-        start_scores = [
-            get_char_match_score(doc_line, start_line, start_line_table)
-            for doc_line in strip_doc_lines[start_pointer:start_window_end]
-        ]
+        # 匹配结束边界
+        end_idx, end_pointer, end_window_size = _match_page_boundary(
+            strip_doc_lines, end_line, end_pointer, end_window_size, score_thresh, min_window_size
+        )
+        page_end_positions.append(end_idx)
 
-        if start_scores and max(start_scores) > score_thresh:
-            start_idx = start_pointer + np.argmax(start_scores)
-            page_start_positions.append(start_idx)
-            start_pointer = start_idx + 1
-            # 如果匹配成功，则恢复原始窗口大小
-            start_window_size = min_window_size
-        else:
-            # 第一次没有匹配成功，则给个机会扩大窗口再来一次
-            start_window_end = min(
-                start_pointer + start_window_size + min_window_size,
-                len(strip_doc_lines),
-            )
-            start_scores = [
-                get_char_match_score(doc_line, start_line, start_line_table)
-                for doc_line in strip_doc_lines[start_pointer:start_window_end]
-            ]
-
-            if start_scores and max(start_scores) > score_thresh:
-                start_idx = start_pointer + np.argmax(start_scores)
-                page_start_positions.append(start_idx)
-                start_pointer = start_idx + 1
-                # 如果匹配成功，则恢复原始窗口大小
-                start_window_size = min_window_size
-            else:
-                page_start_positions.append(-2)
-                # 如果匹配失败，则扩大窗口
-                start_window_size += min_window_size
-
-        # 计算结束行的匹配分数
-        end_window_end = min(end_pointer + end_window_size, len(strip_doc_lines))
-        end_scores = [
-            get_char_match_score(doc_line, end_line, end_line_table)
-            for doc_line in strip_doc_lines[end_pointer:end_window_end]
-        ]
-
-        if debug and "six-dofhapti" in end_line:
-            print(max(end_scores), end_pointer, end_window_end, end_line)
-            idx = np.argmax(end_scores)
-            print(idx)
-            print(strip_doc_lines[end_pointer:end_window_end][idx])
-
-        if end_scores and max(end_scores) > score_thresh:
-            end_idx = end_pointer + np.argmax(end_scores)
-            page_end_positions.append(end_idx)
-            end_pointer = end_idx + 1
-            # 如果匹配成功，则恢复原始窗口大小
-            end_window_size = min_window_size
-        else:
-            # 第一次没有匹配成功，则给个机会扩大窗口再来一次
-            end_window_end = min(
-                end_pointer + end_window_size + min_window_size, len(strip_doc_lines)
-            )
-            end_scores = [
-                get_char_match_score(doc_line, end_line, end_line_table)
-                for doc_line in strip_doc_lines[end_pointer:end_window_end]
-            ]
-
-            if end_scores and max(end_scores) > score_thresh:
-                end_idx = end_pointer + np.argmax(end_scores)
-                page_end_positions.append(end_idx)
-                end_pointer = end_idx + 1
-                # 如果匹配成功，则恢复原始窗口大小
-                end_window_size = min_window_size
-            else:
-                page_end_positions.append(-2)
-                # 如果匹配失败，则扩大窗口
-                end_window_size += min_window_size
-
-        if (
-            page_end_positions[-1] > 0
-            and page_start_positions[-1] > page_end_positions[-1]
-        ):
+        # 处理顺序错误的情况
+        if end_idx > 0 and start_idx > end_idx:
             page_start_positions[-1] = -2
-            start_pointer = page_end_positions[-1] - 1
-
-        if debug:
-            print(page_start_positions[-1], max(start_scores), start_line)
-            print(page_end_positions[-1], max(end_scores), end_line)
-
-    if debug:
-        print(page_start_positions)
-        print(page_end_positions)
+            start_pointer = end_idx - 1
 
     return page_start_positions, page_end_positions
-
-def get_span_of_pages(doc_lines, page_start_positions, page_end_positions):
-    """
-    获取每一页的文本范围
-    
-    Args:
-        doc_lines: 文档行列表
-        page_start_positions: 每一页的开始行索引
-        page_end_positions: 每一页的结束行索引
-    
-    Returns:
-        page_span: 每一页的文本范围列表
-        coinside_pages: 两页重合的页码对
-        bad_pages: 两页冲突的页码对
-    """
-    # 确定分割位置
-    start_list, end_list = [], []
-    whole_start_list, whole_end_list = [], []
-    bad_pages = []  # 如果开头结尾冲突，则认为这两页需要丢弃
-    coinside_pages = []  # 两页重合的页码对
-
-    # 辅助参数
-    last_end = 0
-    last_end_positions = [-1] + page_end_positions[:-1]
-    next_start_positions = page_start_positions[1:] + [len(doc_lines)]
-    # 获取每一页的开始和结束位置
-    for i, (start_idx, end_idx, last_end_idx, next_start_idx) in enumerate(
-        zip(
-            page_start_positions,
-            page_end_positions,
-            last_end_positions,
-            next_start_positions,
-        )
-    ):
-        # 该页没有行，直接添加占位结果
-        if start_idx == -1:
-            whole_start_list.append(-1)
-            whole_end_list.append(-1)
-            continue
-        # 该页头尾都失配，直接添加占位结果
-        elif start_idx == -2 and end_idx == -2:
-            start_list.append(-2)
-            end_list.append(-2)
-            bad_pages.append(i)
-        # 该页头失配，尾匹配成功
-        elif start_idx < 0 and end_idx >= 0:
-            # 如果该页是第一页，则直接添加0
-            if i == 0:
-                start_list.append(0)
-            # 如果上一页正常有效，则按照上一页来
-            elif last_end_idx >= 0:
-                start_list.append(last_end + 1)
-            # 如果上一页是无效匹配，则直接添加占位结果
-            else:
-                start_list.append(last_end)
-                bad_pages.append(i)
-            end_list.append(end_idx)
-        # 该页头匹配成功，尾失配
-        elif start_idx >= 0 and end_idx < 0:
-            start_list.append(start_idx)
-            if next_start_idx > 0:
-                end_list.append(next_start_idx - 1)
-            else:
-                end_list.append(start_idx)
-                bad_pages.append(i)
-        # 该页头尾都匹配成功
-        else:
-            if end_idx >= start_idx:
-                start_list.append(start_idx)
-                end_list.append(end_idx)
-            else:
-                start_list.append(last_end)
-                end_list.append(last_end)
-                bad_pages.append(i)
-
-        # 更新完整参数
-        whole_start_list.append(start_list[-1])
-        whole_end_list.append(end_list[-1])
-
-        last_end = end_list[-1]
-
-        # 判断分页是否在同一段
-        if end_idx == next_start_idx:
-            coinside_pages.append((i, i + 1))
-
-    page_span = [(start, end) for start, end in zip(whole_start_list, whole_end_list)]
-
-    return page_span, coinside_pages, bad_pages 

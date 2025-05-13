@@ -4,6 +4,7 @@ Copyright (c) 2022-present NAVER Corp.
 MIT License
 Copyright (c) Meta Platforms, Inc. and affiliates.
 """
+
 import logging
 import os
 from math import prod
@@ -142,11 +143,7 @@ class SciPDFDataset(Dataset):
     empty_sample = None
 
     def __init__(
-        self,
-        path_to_index: str,
-        split: str = "train",
-        root_name="",
-        template="%s",
+        self, path_to_index: str, split: str = "train", root_name="", template="%s"
     ) -> None:
         super().__init__()
         self.path_to_index = Path(path_to_index)
@@ -164,9 +161,7 @@ class SciPDFDataset(Dataset):
         if seek_path.exists():
             self.seek_map = orjson.loads(seek_path.open().read())
         else:
-            raise ValueError(
-                'No "%s" found in %s' % (seek_path.name, str(self.path_to_root))
-            )
+            raise ValueError('No "%s" found in %s' % (seek_path.name, str(self.path_to_root)))
         self.dataset_length = len(self.seek_map)
 
     def __len__(self) -> int:
@@ -271,9 +266,7 @@ class NougatDataset(Dataset):
             while random.random() < 0.1:
                 try:
                     pos = random.randint(1, unpadded_length - 2)
-                    token = random.randint(
-                        23, len(self.nougat_model.decoder.tokenizer) - 1
-                    )
+                    token = random.randint(23, len(self.nougat_model.decoder.tokenizer) - 1)
                     input_ids[pos] = token
                 except ValueError:
                     break

@@ -25,7 +25,7 @@ def replace_join_text(text: str) -> str:
 
 def extract_clean_pdf_lines(pdf: pypdf.PdfReader) -> List[List[str]]:
     """
-    从PDF中提取并清理文本行
+    从PDF中提取并清理文本行.
     
     Args:
         pdf: PDF文件对象
