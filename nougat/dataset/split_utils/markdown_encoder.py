@@ -227,6 +227,7 @@ other_symbols = {
     r"\\triangledown": "▽",
 }
 
+
 def encode_math_symbol(text):
     """
     将文本中用转义符描述的数学符号尽可能还原为对应的Unicode字符
@@ -255,6 +256,7 @@ def encode_math_symbol(text):
 
     return text
 
+
 def clear_semantic_symbol(text):
     """
     清洗一些常见的md公式符号
@@ -274,17 +276,13 @@ def clear_semantic_symbol(text):
         text = re.sub(re.escape(pattern), replacement, text)
 
     # 处理数学字体样式命令，保留括号内的内容
-    text = re.sub(
-        r"\\math(?:frak|cal|bb|sf|tt|bf|it|rm|scr|normal)\{([^}]*)\}", r"\1", text
-    )
+    text = re.sub(r"\\math(?:frak|cal|bb|sf|tt|bf|it|rm|scr|normal)\{([^}]*)\}", r"\1", text)
 
     # 处理\operatorname和\operatorname*命令
     text = re.sub(r"\\operatorname\*?\{([^}]*)\}", r"\1", text)
 
     # 处理空格命令
-    text = re.sub(
-        r"\\(?:enspace|quad|qquad|,|thinspace|:|medspace|;|thickspace)", " ", text
-    )
+    text = re.sub(r"\\(?:enspace|quad|qquad|,|thinspace|:|medspace|;|thickspace)", " ", text)
 
     # 处理其他结构化命令，保留内容
     text = re.sub(
@@ -338,6 +336,7 @@ def clear_semantic_symbol(text):
 
     return text
 
+
 def encode_formula_in_md(doc, debug=False):
     """
     将md中的公式尽可能转换为编译后的文本
@@ -347,6 +346,7 @@ def encode_formula_in_md(doc, debug=False):
     4. 将doc中的公式替换为编译后的文本
     5. 返回编译后的文本
     """
+
     def process_formula(match):
         formula = match.group(1)  # 提取公式内容
         # 处理公式内容
@@ -374,6 +374,7 @@ def encode_formula_in_md(doc, debug=False):
         doc = re.sub(pattern, lambda m: replacement_func(m), doc, flags=re.DOTALL)
 
     return doc
+
 
 if __name__ == "__main__":
     txt = r'such as \(\|{\mathbf{Z}}\odot({\mathbf{Y}}-{\mathbf{B}}{\mathbf{S}}^{({\mathcal{L}})})\|\)", which will influence the learned and matrices via backpropagation.'

@@ -111,7 +111,7 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
         debug: 是否开启调试模式
 
     Returns:
-        valid_lines_of_pages: Markdown文档中每一页的有效行列表
+        valid_lines_of_pages: PDF文档中每一页的有效行列表
     """
     # 获取干净的文档中的纯文本
     strip_doc_lines = [squeeze_text(line) for line in doc_lines]

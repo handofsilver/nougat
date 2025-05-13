@@ -12,14 +12,21 @@ PageSpan = Tuple[PageIndex, PageIndex]  # 页面范围类型
 PagePair = Tuple[PageIndex, PageIndex]  # 页面对类型
 
 
+class PageIndex:
+    START_OF_DOC = 0  # 文档开始位置
+    NO_LINES = -1  # 页面没有有效行
+    BOTH_MISSING = -2  # 页面头尾都失配
+    INVALID_POS = -3  # 无效位置（与BOTH_MISSING相同，但语义不同）
+
+
 class PageMatchStatus(Enum):
     """页面匹配状态"""
 
+    BOTH_MATCHED = 1  # 页面头尾都匹配成功
     NO_LINES = -1  # 页面没有有效行
     BOTH_MISSING = -2  # 页面头尾都失配
     HEAD_MISSING = -3  # 页面头失配
     TAIL_MISSING = -4  # 页面尾失配
-    BOTH_MATCHED = 1  # 页面头尾都匹配成功
     ORDER_WRONG = -5  # 页面头尾匹配但顺序错误
 
 
@@ -73,13 +80,13 @@ def _get_match_status(start_idx: PageIndex, end_idx: PageIndex) -> PageMatchStat
     Returns:
         PageMatchStatus: 匹配状态
     """
-    if start_idx == -1:
+    if start_idx == PageIndex.NO_LINES:
         return PageMatchStatus.NO_LINES
-    if start_idx == -2 and end_idx == -2:
+    if start_idx == PageIndex.BOTH_MISSING and end_idx == PageIndex.BOTH_MISSING:
         return PageMatchStatus.BOTH_MISSING
-    if start_idx < 0 and end_idx >= 0:
+    if start_idx < PageIndex.START_OF_DOC and end_idx >= PageIndex.START_OF_DOC:
         return PageMatchStatus.HEAD_MISSING
-    if start_idx >= 0 and end_idx < 0:
+    if start_idx >= PageIndex.START_OF_DOC and end_idx < PageIndex.START_OF_DOC:
         return PageMatchStatus.TAIL_MISSING
     if end_idx >= start_idx:
         return PageMatchStatus.BOTH_MATCHED
@@ -114,21 +121,33 @@ def _handle_page_boundaries(
     # 根据不同的匹配状态处理边界
     if status == PageMatchStatus.NO_LINES:
         return BoundaryMatchResult(
-            status=status, start_pos=-1, end_pos=-1, last_end=last_end, should_skip=True
+            status=status,
+            start_pos=PageIndex.NO_LINES,
+            end_pos=PageIndex.NO_LINES,
+            last_end=last_end,
+            should_skip=True,
         )
 
     if status == PageMatchStatus.BOTH_MISSING:
         return BoundaryMatchResult(
-            status=status, start_pos=-2, end_pos=-2, last_end=last_end, should_skip=False
+            status=status,
+            start_pos=PageIndex.BOTH_MISSING,
+            end_pos=PageIndex.BOTH_MISSING,
+            last_end=last_end,
+            should_skip=False,
         )
 
     if status == PageMatchStatus.HEAD_MISSING:
         if is_first_page:
             # 第一页特殊处理：如果头失配，使用0作为开始位置
             return BoundaryMatchResult(
-                status=status, start_pos=0, end_pos=end_idx, last_end=end_idx, should_skip=False
+                status=status,
+                start_pos=PageIndex.START_OF_DOC,
+                end_pos=end_idx,
+                last_end=end_idx,
+                should_skip=False,
             )
-        if last_end_idx >= 0:
+        if last_end_idx >= PageIndex.START_OF_DOC:
             # 如果上一页正常，从上一页结束位置后开始
             return BoundaryMatchResult(
                 status=status,
@@ -143,7 +162,7 @@ def _handle_page_boundaries(
         )
 
     if status == PageMatchStatus.TAIL_MISSING:
-        if next_start_idx > 0:
+        if next_start_idx > PageIndex.START_OF_DOC:
             # 如果下一页正常，使用下一页开始位置前作为结束
             return BoundaryMatchResult(
                 status=status,
@@ -203,8 +222,8 @@ def get_span_of_pages(
     )
 
     # 准备辅助参数
-    last_end: PageIndex = 0
-    last_end_positions = [-1] + page_end_positions[:-1]  # 上一页的结束位置列表
+    last_end: PageIndex = PageIndex.START_OF_DOC
+    last_end_positions = [PageIndex.INVALID_POS] + page_end_positions[:-1]  # 上一页的结束位置列表
     next_start_positions = page_start_positions[1:] + [len(doc_lines)]  # 下一页的开始位置列表
 
     # 处理每一页的边界
@@ -223,7 +242,7 @@ def get_span_of_pages(
 
         # 如果应该跳过当前页面，直接添加占位结果
         if match_result.should_skip:
-            result.page_spans.append((-1, -1))
+            result.page_spans.append((PageIndex.NO_LINES, PageIndex.NO_LINES))
             continue
 
         # 更新结果
@@ -290,7 +309,7 @@ def _match_page_boundary(
         match_idx = pointer + np.argmax(scores)
         return match_idx, match_idx + 1, min_window_size
 
-    return -2, pointer, window_size + min_window_size
+    return PageIndex.BOTH_MISSING, pointer, window_size + min_window_size
 
 
 def locate_page_boundaries(
@@ -314,7 +333,7 @@ def locate_page_boundaries(
             - page_end_positions: 每一Markdown页的结束行索引
     """
     # 初始化
-    start_pointer = end_pointer = 0
+    start_pointer = end_pointer = PageIndex.START_OF_DOC
     start_window_size = end_window_size = min_window_size
     page_start_positions = []  # 该Markdown页第一行文本在 doc_lines 中的索引
     page_end_positions = []  # 该Markdown页最后一行文本在 doc_lines 中的索引
@@ -326,8 +345,8 @@ def locate_page_boundaries(
     for page_lines in valid_lines_of_pages:
         # 处理空页
         if not page_lines:
-            page_start_positions.append(-1)
-            page_end_positions.append(-1)
+            page_start_positions.append(PageIndex.NO_LINES)
+            page_end_positions.append(PageIndex.NO_LINES)
             continue
 
         # 获取并清理页面边界行
@@ -336,24 +355,29 @@ def locate_page_boundaries(
 
         # 匹配开始边界
         start_idx, start_pointer, start_window_size = _match_page_boundary(
-            strip_doc_lines,
-            start_line,
-            start_pointer,
-            start_window_size,
-            score_thresh,
-            min_window_size,
+            doc_lines=strip_doc_lines,
+            query_line=start_line,
+            pointer=start_pointer,
+            window_size=start_window_size,
+            score_thresh=score_thresh,
+            min_window_size=min_window_size,
         )
         page_start_positions.append(start_idx)
 
         # 匹配结束边界
         end_idx, end_pointer, end_window_size = _match_page_boundary(
-            strip_doc_lines, end_line, end_pointer, end_window_size, score_thresh, min_window_size
+            doc_lines=strip_doc_lines,
+            query_line=end_line,
+            pointer=end_pointer,
+            window_size=end_window_size,
+            score_thresh=score_thresh,
+            min_window_size=min_window_size,
         )
         page_end_positions.append(end_idx)
 
         # 处理顺序错误的情况
-        if end_idx > 0 and start_idx > end_idx:
-            page_start_positions[-1] = -2
+        if end_idx > PageIndex.START_OF_DOC and start_idx > end_idx:
+            page_start_positions[-1] = PageIndex.BOTH_MISSING
             start_pointer = end_idx - 1
 
     return page_start_positions, page_end_positions

@@ -83,9 +83,7 @@ def get_char_match_score(
                 j += 1
             else:
                 # 更新最大连续匹配长度
-                max_continuous_length = max(
-                    max_continuous_length, current_continuous_length
-                )
+                max_continuous_length = max(max_continuous_length, current_continuous_length)
 
                 # 保存当前位置，以便策略失败时回退
                 original_i = i
@@ -173,6 +171,8 @@ if __name__ == "__main__":
 
     content = "weintroduceanewmethodbasedonnonnegativematrixfactorization,neuralnmf,fordetectinglatenthierarchicalstructur"
     query = ".weintroduceaneswmethodbasedonnonnegativematrixfactorization,neuralnmf,for"
-    content = "{(l)},suchas|z⊙(y-bs(l))|,whichwillinfluencethelearnedaandsmatricesviabackpropagation."
+    content = (
+        "{(l)},suchas|z⊙(y-bs(l))|,whichwillinfluencethelearnedaandsmatricesviabackpropagation."
+    )
     query = "@(y−bs(l))∥,whichwillinfluencethelearnedaandsmatricesviabackpropagation."
     print(get_char_match_score(content, query, debug=True))

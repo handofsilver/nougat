@@ -5,7 +5,7 @@ from nougat.dataset.split_utils.markdown_encoder import encode_formula_in_md
 
 def parse_markdown(doc: str) -> str:
     """
-    解析Markdown文档，提取文本内容
+    解析Markdown文档, 提取文本内容
 
     1. 清洗掉所有特殊标记标签的内容：
        - [TABLE:.*] 和 [ENDTABLE] 之间
