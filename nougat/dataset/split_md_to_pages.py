@@ -32,7 +32,7 @@ def split_markdown(
             - bad_pages: 两页冲突的页码对
     """
     # 解析markdown文本
-    doc_lines = parse_markdown_lines(doc)
+    doc_lines, text_obj_map, line_tag_map = parse_markdown_lines(doc)
 
     # 过滤和匹配行
     valid_lines_of_pages = filter_and_match_lines(pdf, doc_lines, debug=debug)

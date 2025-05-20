@@ -114,7 +114,7 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
         valid_lines_of_pages: PDF文档中每一页的有效行列表
     """
     # 获取干净的文档中的纯文本
-    strip_doc_lines = [squeeze_text(line) for line in doc_lines]
+    strip_doc_lines = [squeeze_text(line).lower() for line in doc_lines]
 
     # 对Markdown文档构建倒排索引
     doc_inverted_index = build_inverted_index(doc_lines)
@@ -132,7 +132,7 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
         single_words_by_line = [jieba.lcut(line) for line in page_lines]
         words_by_line = [build_words(words) for words in single_words_by_line]
 
-        for i, (line, strip_line, words) in enumerate(
+        for i, (line, strip_pdf_line, words) in enumerate(
             zip(page_lines, strip_page_lines, words_by_line)
         ):
             # i: 行号
@@ -141,41 +141,43 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
             # words: PDF行文本的单词组合
 
             # 确保 "Thus,"，"Where,"这种超短的单行成段的文本有效
-            if strip_line in strip_doc_lines:  # 如果去除所有空格后的PDF行文本在Markdown文档中存在
+            if (
+                strip_pdf_line in strip_doc_lines
+            ):  # 如果去除所有空格后的PDF行文本在Markdown文档中存在
                 valid_lines.append(line)
-                last_line = strip_line
+                last_line = strip_pdf_line
                 continue
 
             # 如果行长度太短，跳过
-            if len(strip_line) <= 3:
-                last_line = strip_line
+            if len(strip_pdf_line) <= 3:
+                last_line = strip_pdf_line
                 continue
 
             # 如果行文本以 "abstract" 开头，并且长度大于30，则去除前8个字符，并去除末尾的 ".—"
-            if strip_line.startswith("abstract") and len(strip_line) > 30:
-                strip_line = strip_line[8:]
-                strip_line = strip_line.strip(".—")
+            if strip_pdf_line.startswith("abstract") and len(strip_pdf_line) > 30:
+                strip_pdf_line = strip_pdf_line[8:]
+                strip_pdf_line = strip_pdf_line.strip(".—")
 
             # 如果行长度大于20，则可以用完美匹配的方式直接判断是否有效
-            if len(strip_line) > 20:
+            if len(strip_pdf_line) > 20:
                 strip_doc_text = "".join(strip_doc_lines)  # 将所有Markdown行文本拼接成一个字符串
-                if strip_line in strip_doc_text:  # 如果PDF行文本在Markdown文档中存在
+                if strip_pdf_line in strip_doc_text:  # 如果PDF行文本在Markdown文档中存在
                     valid_lines.append(line)
-                    last_line = strip_line
+                    last_line = strip_pdf_line
                     continue
 
             # tmp_line: 去除标点符号后的PDF行文本
-            tmp_line = re.sub(r"-|_| ", "", strip_line)
+            tmp_line = re.sub(r"-|_| ", "", strip_pdf_line)
             tmp_line = tmp_line.strip("{}[]<>()（）")
 
             # 如果去除标点符号后的PDF行文本是数字，则认为有效
             if tmp_line.isdigit():
-                last_line = strip_line
+                last_line = strip_pdf_line
                 continue
 
             # 如果去除标点符号后的PDF行文本是字母，并且长度小于10，则认为有效
             if tmp_line.isalpha() and len(tmp_line) < 10:
-                last_line = strip_line
+                last_line = strip_pdf_line
                 continue
 
             # 如果去除标点符号后的PDF行文本是字母，并且上一行或下一行长度小于15，则认为有效
@@ -183,7 +185,7 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
             if tmp_line.isalpha() and (
                 (last_line and len(last_line) < 15) or (next_line and len(next_line) < 15)
             ):
-                last_line = strip_line
+                last_line = strip_pdf_line
                 continue
 
             # 获取候选行索引(Markdown文档中的行索引)
@@ -204,19 +206,19 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
             # 计算匹配分数
             doc_scores = []
             for doc_line in candid_doc_lines:
-                doc_scores.append(get_char_match_score(content=doc_line, query=strip_line))
+                doc_scores.append(get_char_match_score(content=doc_line, query=strip_pdf_line))
                 # 如果匹配分数大于0.9,说明找到了很好的匹配,不需要继续计算其他候选行的分数
                 if doc_scores[-1] > 0.9:
                     break
 
-            if len(strip_line) > 30:
+            if len(strip_pdf_line) > 30:
                 if doc_scores and max(doc_scores) > 0.5:
                     valid_lines.append(line)
             else:
                 if doc_scores and max(doc_scores) > 0.75:
                     valid_lines.append(line)
 
-            last_line = strip_line
+            last_line = strip_pdf_line
 
         valid_lines_of_pages.append(valid_lines)
 

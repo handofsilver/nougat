@@ -4,9 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 
 
-def is_caption_below(
-    caption_boundary: Dict[str, float], region_boundary: Dict[str, float]
-) -> bool:
+def is_caption_below(caption_boundary: Dict[str, float], region_boundary: Dict[str, float]) -> bool:
     """
     判断标题是否在图片下方
     caption_boundary: 标题边界
@@ -20,9 +18,7 @@ def is_caption_below(
     return caption_mid_y > image_mid_y
 
 
-def normalize_coords(
-    coords: List[float], page_width: float, page_height: float
-) -> List[float]:
+def normalize_coords(coords: List[float], page_width: float, page_height: float) -> List[float]:
     """
     将坐标归一化到 [0, 1] 范围
     coords: 坐标列表 [x1, y1, x2, y2]
@@ -39,10 +35,7 @@ def normalize_coords(
 
 
 def inject_coordinates(
-    mmd_text: str,
-    fig_info: List[dict],
-    page_width: float = 595.0,
-    page_height: float = 842.0,
+    mmd_text: str, fig_info: List[dict], page_width: float = 595.0, page_height: float = 842.0
 ) -> str:
     """
     Inject coordinates into mmd_text according to fig_info.
@@ -79,9 +72,7 @@ def inject_coordinates(
 
         # 归一化坐标：将坐标归一化到 [0, 1] 范围
         normalized_coords = normalize_coords(
-            [coords["x1"], coords["y1"], coords["x2"], coords["y2"]],
-            page_width,
-            page_height,
+            [coords["x1"], coords["y1"], coords["x2"], coords["y2"]], page_width, page_height
         )
 
         coords_str = f"[FIGURE_COORDS](x1={normalized_coords[0]}, y1={normalized_coords[1]}, x2={normalized_coords[2]}, y2={normalized_coords[3]})[ENDFIGURE_COORDS]"

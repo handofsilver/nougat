@@ -30,9 +30,7 @@ conv = {
     ">": r"\textgreater{}",
 }
 regex = re.compile(
-    "|".join(
-        re.escape(str(key)) for key in sorted(conv.keys(), key=lambda item: -len(item))
-    )
+    "|".join(re.escape(str(key)) for key in sorted(conv.keys(), key=lambda item: -len(item)))
 )
 
 
@@ -52,9 +50,7 @@ def remove_line_breaks(parts: List[str]):
     return out
 
 
-def leading_trailing_whitespace(
-    parts: List[str],
-) -> Tuple[List[str], List[str], List[str]]:
+def leading_trailing_whitespace(parts: List[str]) -> Tuple[List[str], List[str], List[str]]:
     """splits the list into three parts. The first and last return elements are made up only of whitespace
 
     Args:
@@ -95,9 +91,7 @@ def is_empty(content: List) -> bool:
     return empty
 
 
-def format_element(
-    element: Element, keep_refs: bool = False, latex_env: bool = False
-) -> List[str]:
+def format_element(element: Element, keep_refs: bool = False, latex_env: bool = False) -> List[str]:
     """
     Formats a given Element into a list of formatted strings.
 
@@ -130,7 +124,8 @@ def format_element(
     if isinstance(element, PlaintextMath):
         return format_children(element, keep_refs) + ["\n"]
     if isinstance(element, Paragraph):
-        return format_children(element, keep_refs, latex_env) + ["\n\n"]
+        children_parts = format_children(element, keep_refs, latex_env)
+        return ["\n[TEXT]\n" + "".join(children_parts) + "\n[ENDTEXT]\n"]
     if isinstance(element, TableCell):
         parts = format_children(element, keep_refs, latex_env)
         remove_trailing_whitespace(parts)
@@ -138,9 +133,7 @@ def format_element(
             parts.insert(0, "\\multirow{%i}{*}{" % (element.multirow))
             parts.append("}")
         if element.multicolumn is not None:
-            parts.insert(
-                0, "\\multicolumn{%i}{%s}{" % (element.multicolumn, element.spec)
-            )
+            parts.insert(0, "\\multicolumn{%i}{%s}{" % (element.multicolumn, element.spec))
             parts.append("}")
         return parts
     if isinstance(element, TableRow):
@@ -148,18 +141,13 @@ def format_element(
         if element.hline_above:
             parts.append(element.hline_above + "\n")
         parts.extend(
-            remove_line_breaks(
-                format_iterator(element.cells, keep_refs, latex_env, join=" & ")
-            )
+            remove_line_breaks(format_iterator(element.cells, keep_refs, latex_env, join=" & "))
         )
         parts.append(r" \\")
         parts.append((" " + element.hline_below).rstrip())
         return parts
     if isinstance(element, Tabular):
-        parts = [
-            "\\begin{tabular}",
-            "{%s}\n" % element.get_table_spec(),
-        ]
+        parts = ["\\begin{tabular}", "{%s}\n" % element.get_table_spec()]
         parts.extend(format_iterator(element.rows, keep_refs, True, join="\n"))
         parts.append("\n\\end{tabular}\n")
         return parts
@@ -179,9 +167,7 @@ def format_element(
 
     # 修改Figure处理部分
     if isinstance(element, Figure):
-        parts = [
-            f"\n[FIGURE:{element.id}]\n" if element.id else "[FIGURE]\n",
-        ]
+        parts = [f"\n[FIGURE:{element.id}]\n" if element.id else "[FIGURE]\n"]
 
         # 添加标题内容（关键修复）
         if element.caption:
@@ -219,7 +205,7 @@ def format_element(
             parts.append("[ENDSUBTITLE]\n")
         else:
             parts = []
-        return ["[TEXT]" + "".join(parts + children_parts) + "[ENDTEXT]\n"]
+        return ["\n[TEXT]\n" + "".join(parts + children_parts) + "\n[ENDTEXT]\n"]
     if isinstance(element, Footnote):
         if element.id is not None:
             foot = f"\n[FOOTNOTE:{element.id}]Footnote {element.id}: "
@@ -228,10 +214,7 @@ def format_element(
         return [foot] + format_children(element, keep_refs) + ["[ENDFOOTNOTE]\n\n"]
     if isinstance(element, ListContainer):
         items = [
-            (
-                item.label,
-                "".join(format_element(item, keep_refs)).strip().replace("\n", " "),
-            )
+            (item.label, "".join(format_element(item, keep_refs)).strip().replace("\n", " "))
             for item in element.items
         ]
         parts = ["\n"]
@@ -297,9 +280,7 @@ def format_element(
         if element.header is not None:
             parts.extend(format_element(element.header, keep_refs))
             parts.append("\n")
-        items = [
-            "".join(format_element(item, keep_refs)).rstrip() for item in element.items
-        ]
+        items = ["".join(format_element(item, keep_refs)).rstrip() for item in element.items]
         items = [item + "\n" for item in items if item]
         if items:
             parts.extend(items)
@@ -309,9 +290,7 @@ def format_element(
     if isinstance(element, Definition):
         parts = []
         if element.term is not None:
-            term = (
-                "".join(format_element(element.term, keep_refs)).rstrip(" \n\t:") + ": "
-            )
+            term = "".join(format_element(element.term, keep_refs)).rstrip(" \n\t:") + ": "
             # maths in wiki might be inside a definition without a term
             if term.strip() != ":":
                 parts.append(term)
@@ -334,9 +313,7 @@ def format_element(
     if isinstance(element, (Superscript, Subscript)):
         content = element.plaintext
         if content.strip().isdigit():
-            script_map = (
-                SUBSCRIPT_MAP if isinstance(element, Subscript) else SUPERSCRIPT_MAP
-            )
+            script_map = SUBSCRIPT_MAP if isinstance(element, Subscript) else SUPERSCRIPT_MAP
             return [content.translate(script_map)]
         else:
             return format_children(element, keep_refs)
@@ -347,7 +324,7 @@ def format_element(
 
     if isinstance(element, AuthorList):
         parts = format_children(element, keep_refs)
-        return "[AUTHOR_INFO]\n" + "".join(parts) + "\n[ENDAUTHOR_INFO]\n\n"
+        return "[AUTHOR]\n" + "".join(parts) + "\n[ENDAUTHOR]\n\n"
 
     if isinstance(element, Author):
         parts = format_children(element, keep_refs)
@@ -360,10 +337,7 @@ def format_element(
 
 
 def format_iterator(
-    iterator: Iterable,
-    keep_refs: bool = False,
-    latex_env: bool = False,
-    join: Optional[str] = None,
+    iterator: Iterable, keep_refs: bool = False, latex_env: bool = False, join: Optional[str] = None
 ) -> List[str]:
     """
     The `format_iterator` function takes an iterator and formats its elements, optionally joining them with a specified string.
@@ -396,9 +370,7 @@ def format_children(
     return format_iterator(element.children, keep_refs, latex_env)
 
 
-def format_document(
-    doc: Document, keep_refs: bool = False
-) -> Tuple[str, Dict[str, str]]:
+def format_document(doc: Document, keep_refs: bool = False) -> Tuple[str, Dict[str, str]]:
     """
     The `format_document` function takes a `doc` object of type `Document` and a boolean `keep_refs` as input and returns a tuple containing the formatted text of the document and a dictionary of figures found in the document.
 
@@ -443,9 +415,7 @@ def format_document(
     # 清理算法标题标签
     text = re.sub(r"\[ALGORITHM_TITLE\]\s+", "[ALGORITHM_TITLE]", text)
     text = re.sub(r"\s+\[ENDALGORITHM_TITLE\]", "[ENDALGORITHM_TITLE]", text)
-    text = re.sub(
-        r"\[ENDALGORITHM_TITLE\]([a-zA-Z])", r"[ENDALGORITHM_TITLE]\n\1", text
-    )
+    text = re.sub(r"\[ENDALGORITHM_TITLE\]([a-zA-Z])", r"[ENDALGORITHM_TITLE]\n\1", text)
 
     # 确保算法标题和内容之间有适当的换行
     text = re.sub(r"\[ENDALGORITHM_TITLE\]\n*", "[ENDALGORITHM_TITLE]\n", text)

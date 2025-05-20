@@ -16,7 +16,7 @@ class PageIndex:
     START_OF_DOC = 0  # 文档开始位置
     NO_LINES = -1  # 页面没有有效行
     BOTH_MISSING = -2  # 页面头尾都失配
-    INVALID_POS = -3  # 无效位置（与BOTH_MISSING相同，但语义不同）
+    INVALID_POS = -3  # 无效位置
 
 
 class PageMatchStatus(Enum):
@@ -339,7 +339,7 @@ def locate_page_boundaries(
     page_end_positions = []  # 该Markdown页最后一行文本在 doc_lines 中的索引
 
     # 预处理：清理空白字符
-    strip_doc_lines = [squeeze_text(line) for line in doc_lines]
+    strip_doc_lines = [squeeze_text(line).lower() for line in doc_lines]
 
     # 处理每一页
     for page_lines in valid_lines_of_pages:

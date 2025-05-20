@@ -104,9 +104,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
         classes = _get_classes(child)
         if isinstance(child, NavigableString):
             parent.append(TextElement(content=_clean_html_whitespace(str(child))))
-        elif sv.match(
-            "p, .ltx_p, div.ltx_para, span.ltx_para, section.ltx_paragraph", child
-        ):
+        elif sv.match("p, .ltx_p, div.ltx_para, span.ltx_para, section.ltx_paragraph", child):
             paragraph = parent.append(Paragraph())
             parse_latexml_children(child, paragraph)
         elif sv.match(".ltx_tag", child):
@@ -164,9 +162,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
             link = parent.append(Link())
             link.target = child.attrs.get("href")
             parse_latexml_children(child, link)
-        elif sv.match(
-            ".ltx_ref.ltx_missing_citation, .ltx_ref.ltx_missing_label", child
-        ):
+        elif sv.match(".ltx_ref.ltx_missing_citation, .ltx_ref.ltx_missing_label", child):
             placeholder = child.get_text().strip()
             resolved = False
             try:
@@ -218,9 +214,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
             # parse_latexml_children(child, parent.append(Paragraph()))
             # parent.append(TextElement(content="\n"))
             parse_latexml_children(child, parent.append(SpanElement()))
-        elif sv.match(
-            ".ltx_author_before, .ltx_role_pubyear, .ltx_role_pagerange", child
-        ):
+        elif sv.match(".ltx_author_before, .ltx_role_pubyear, .ltx_role_pagerange", child):
             # pass
             parse_latexml_children(child, parent.append(SpanElement()))
             # parent.append(TextElement(content="\n"))
@@ -254,9 +248,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
         elif sv.match(".ltx_TOC.ltx_toc_toc", child):
             s = parent.append(Section(hnum=6, header=TextElement(content="Contents")))
             parse_latexml_children(child, s.append(Paragraph()))
-        elif sv.match(
-            "ul.ltx_itemize, ul.ltx_toclist, ul.ltx_biblist, ol.ltx_enumerate", child
-        ):
+        elif sv.match("ul.ltx_itemize, ul.ltx_toclist, ul.ltx_biblist, ol.ltx_enumerate", child):
             lst = parent.append(ListContainer())
             lst.ordered = child.name == "ol"
             parent_list = parent.find_parent(ListContainer)
@@ -285,9 +277,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                     elif re.search(r"[A-Za-z][:;.,_]?\d", text):
                         # probably a broken citation, go with link number instead
                         in_ref.append(
-                            TextElement(
-                                content=re.sub(r"\D", "", target.partition(".bib")[2])
-                            )
+                            TextElement(content=re.sub(r"\D", "", target.partition(".bib")[2]))
                         )
                     else:
                         raise ValueError('unusable reference "%s"' % text)
@@ -295,9 +285,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                     if doc:
                         doc.add_inline_ref(in_ref)
                 except ValueError as e:
-                    printerr(
-                        f"Error processing reference: {text}, {e}", file=sys.stderr
-                    )
+                    printerr(f"Error processing reference: {text}, {e}", file=sys.stderr)
             else:
                 link = parent.append(Link())
                 link.target = target
@@ -398,21 +386,15 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                 if isinstance(parent_elem, Table):
                     parent_elem.caption.append(TextElement(content="[TABLE_TITLE]"))
                     parse_latexml_children(child, parent_elem.caption)
-                    parent_elem.caption.append(
-                        TextElement(content="[ENDTABLE_TITLE]\n\n")
-                    )
+                    parent_elem.caption.append(TextElement(content="[ENDTABLE_TITLE]\n\n"))
                 elif isinstance(parent_elem, Algorithm):
                     parent_elem.caption.append(TextElement(content="[ALGORITHM_TITLE]"))
                     parse_latexml_children(child, parent_elem.caption)
-                    parent_elem.caption.append(
-                        TextElement(content="[ENDALGORITHM_TITLE]\n\n")
-                    )
+                    parent_elem.caption.append(TextElement(content="[ENDALGORITHM_TITLE]\n\n"))
                 elif isinstance(parent_elem, Figure):
                     parent_elem.caption.append(TextElement(content="[FIGURE_TITLE]"))
                     parse_latexml_children(child, parent_elem.caption)
-                    parent_elem.caption.append(
-                        TextElement(content="[ENDFIGURE_TITLE]\n\n")
-                    )
+                    parent_elem.caption.append(TextElement(content="[ENDFIGURE_TITLE]\n\n"))
             else:
                 # 如果找不到相应父元素,作为普通段落处理
                 para = parent.append(Paragraph())
@@ -468,18 +450,14 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                 parse_latexml_children(child, fig.caption)
                 fig.caption.append(TextElement(content="\n"))
             else:
-                printerr(
-                    "Caption outside figure/table/algorithm element", file=sys.stderr
-                )
+                printerr("Caption outside figure/table/algorithm element", file=sys.stderr)
                 para = parent.append(Paragraph())
                 parse_latexml_children(child, para)
         elif sv.match(".ltx_abstract, .ltx_acknowledgements", child):
             abstract = parent.append(Section())
             parse_latexml_children(child, abstract)
         elif sv.match(".ltx_ERROR", child):
-            printerr(
-                f"LaTeX error element: {child.get_text(strip=True)}", file=sys.stderr
-            )
+            printerr(f"LaTeX error element: {child.get_text(strip=True)}", file=sys.stderr)
         elif is_wrapper_element(child):
             parse_latexml_children(child, parent)
         elif ignore_element(child):
@@ -506,16 +484,11 @@ def parse_latexml_references(html: BeautifulSoup, doc: Document) -> None:
         doc.add_reference(reference)
 
 
-def parse_latexml(
-    html: BeautifulSoup,
-) -> Optional[Document]:
+def parse_latexml(html: BeautifulSoup) -> Optional[Document]:
     if html.article is None:
         printerr("Missing article element", file=sys.stderr)
         return None
     doc = Document()
     parse_latexml_children(html.article, doc)
-    parse_latexml_references(
-        html.article,
-        doc,
-    )
+    parse_latexml_references(html.article, doc)
     return doc

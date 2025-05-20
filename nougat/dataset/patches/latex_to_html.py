@@ -45,15 +45,7 @@ def _remove_latex_spacing_commands(text: str) -> str:
     如果你还遇到更多类似的命令，可以依葫芦画瓢往下加。
     """
     # 这里演示最简，直接把它们干掉
-    spacing_cmds = [
-        r"\\/",
-        r"\\!",
-        r"\\,",
-        r"\\;",
-        r"\\:",
-        r"\\\.",
-        r"\\\ ",
-    ]  # 可按需增补
+    spacing_cmds = [r"\\/", r"\\!", r"\\,", r"\\;", r"\\:", r"\\\.", r"\\\ "]  # 可按需增补
     for cmd in spacing_cmds:
         text = re.sub(cmd, "", text)
     return text

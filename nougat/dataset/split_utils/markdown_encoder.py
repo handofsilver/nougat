@@ -337,7 +337,7 @@ def clear_semantic_symbol(text):
     return text
 
 
-def encode_formula_in_md(doc, debug=False):
+def encode_formula_in_markdown(doc, debug=False):
     """
     将md中的公式尽可能转换为编译后的文本
     1. 根据转义方括号或圆括号提取出doc中的所有公式
@@ -378,4 +378,4 @@ def encode_formula_in_md(doc, debug=False):
 
 if __name__ == "__main__":
     txt = r'such as \(\|{\mathbf{Z}}\odot({\mathbf{Y}}-{\mathbf{B}}{\mathbf{S}}^{({\mathcal{L}})})\|\)", which will influence the learned and matrices via backpropagation.'
-    print(encode_formula_in_md(txt))
+    print(encode_formula_in_markdown(txt))

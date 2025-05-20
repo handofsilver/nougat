@@ -5,9 +5,7 @@ from bs4 import BeautifulSoup
 def build_citation_map(bbl_file):
     with open(bbl_file) as f:
         content = f.read()
-    bib_items = re.findall(
-        r"\\bibitem(?:\[\{(.*?)\}\])?\{(.*?)\}", content, flags=re.DOTALL
-    )
+    bib_items = re.findall(r"\\bibitem(?:\[\{(.*?)\}\])?\{(.*?)\}", content, flags=re.DOTALL)
     keys = [bib_items[i][1] for i in range(len(bib_items))]
     return {key: idx + 1 for idx, key in enumerate(keys)}
 
