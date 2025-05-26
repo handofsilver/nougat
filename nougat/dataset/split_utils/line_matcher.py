@@ -3,32 +3,12 @@ import re
 from typing import List, Dict
 from nougat.dataset.split_utils.text_cleaner import squeeze_text
 from nougat.dataset.split_utils.string_matcher import get_char_match_score
-from nougat.dataset.split_utils.pdf_processor import extract_clean_pdf_lines
+from nougat.dataset.split_utils.pdf_processor import extract_lower_pdf_lines
 
 
-def build_words(words: List[str]) -> List[str]:
+def build_pdf_words_for_match(words: List[str]) -> List[str]:
     """
     构建单词组合，用于文本匹配.
-
-    具体规则：
-    1. 如果最大单词长度大于1:
-        - 如果单词数量大于10, 则将单词组合为3个单词的组合
-        - 如果单词数量大于5, 则将单词组合为2个单词的组合
-        - 否则, 将单词组合为1个单词的组合
-    2. 如果最大单词长度等于1:
-        - 如果单词数量大于3, 则将单词组合为4个单词的组合
-        - 否则, 将单词组合为1个单词的组合
-
-    e.g.
-    print(build_words(["我们", "正在", "学习", "自然", "语言", "处理"]))
-    ### ['语言 处理', '学习 自然', '我们 正在', '正在 学习', '自然 语言']
-
-    print(build_words(["I", "am", "a", "student"]))
-    ### ['a student', 'am', 'I am', 'am a', 'student']
-
-    print(build_words(["a", "b", "c", "d", "e", "f", "g"]))
-    ### ['a b c d', 'c d e f', 'b c d e', 'd e f g']
-
     """
     words = [word.strip() for word in words if len(word.strip())]
     lens = [len(word) for word in words]
@@ -50,29 +30,17 @@ def build_words(words: List[str]) -> List[str]:
     return new_words
 
 
-def build_words_for_index(words: List[str]) -> List[str]:
+def build_markdown_words_for_index(words: List[str]) -> List[str]:
     """
     构建单词组合，用于索引.
-
-    e.g. words = ["我们", "正在", "学习", "自然", "语言", "处理"]
-
-    1. build_words 输出(因为 len(words) > 5):
-    - ["我们 正在", "正在 学习", "学习 自然", "自然 语言", "语言 处理"]
-
-    2. build_words_for_index 输出(假设 len(words) > 8):
-    - ["我们 正在 学习", "正在 学习 自然", "学习 自然 语言", "自然 语言 处理",  # 3-grams
-    - "我们 正在", "正在 学习", "学习 自然", "自然 语言", "语言 处理"]  # 2-grams
     """
     words = [word.strip() for word in words if len(word.strip())]
     lens = [len(word) for word in words]
     max_len = max(lens)
     if max_len > 1:
-        # 仅如下部分与build_words函数不同
         if len(words) > 8:
             new_words = [" ".join(words[j : j + 3]) for j in range(len(words) - 2)]  # 3-grams
             new_words += [" ".join(words[j : j + 2]) for j in range(len(words) - 1)]  # 2-grams
-
-        # 以下部分与build_words函数完全相同
         else:
             new_words = [word for word in words if len(word) > 1]  # 1-grams
             new_words += [" ".join(words[j : j + 2]) for j in range(len(words) - 1)]  # 2-grams
@@ -90,8 +58,8 @@ def build_inverted_index(lines: List[str]) -> Dict[str, List[int]]:
     构建倒排索引，返回一个字典，键为单词，值为该单词在行数组中的索引列表.
     """
     inverted_index = {}
-    words_by_line = [jieba.lcut(line) for line in lines]
-    new_words_by_line = [build_words_for_index(words) for words in words_by_line]
+    words_by_line = [jieba.lcut(line.lower()) for line in lines]
+    new_words_by_line = [build_markdown_words_for_index(words) for words in words_by_line]
     for i, (words, new_words) in enumerate(zip(words_by_line, new_words_by_line)):
         # i: 行号
         # words: words_by_line, 每行单词列表
@@ -120,17 +88,17 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
     doc_inverted_index = build_inverted_index(doc_lines)
 
     # 获取干净的 pdf 中的纯文本
-    raw_lines_of_pages = extract_clean_pdf_lines(pdf)
+    raw_lines_of_pages = extract_lower_pdf_lines(pdf)
 
     # 遍历每一页，获取有效行
     last_line = ""  # 上一行PDF文本
     valid_lines_of_pages = []  # 每一PDF页的有效行
     for page_lines in raw_lines_of_pages:
-        strip_page_lines = [squeeze_text(line) for line in page_lines]
-        valid_lines = []  # 当前PDF页的有效行
-
         single_words_by_line = [jieba.lcut(line) for line in page_lines]
-        words_by_line = [build_words(words) for words in single_words_by_line]
+        words_by_line = [build_pdf_words_for_match(words) for words in single_words_by_line]
+
+        valid_lines = []  # 当前PDF页的有效行
+        strip_page_lines = [squeeze_text(line) for line in page_lines]
 
         for i, (line, strip_pdf_line, words) in enumerate(
             zip(page_lines, strip_page_lines, words_by_line)
@@ -141,9 +109,8 @@ def filter_and_match_lines(pdf, doc_lines: List[str], debug=False):
             # words: PDF行文本的单词组合
 
             # 确保 "Thus,"，"Where,"这种超短的单行成段的文本有效
-            if (
-                strip_pdf_line in strip_doc_lines
-            ):  # 如果去除所有空格后的PDF行文本在Markdown文档中存在
+            if strip_pdf_line in strip_doc_lines:
+                # 如果去除所有空格后的PDF行文本在Markdown文档中存在
                 valid_lines.append(line)
                 last_line = strip_pdf_line
                 continue
