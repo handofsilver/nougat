@@ -11,10 +11,11 @@ from typing import Dict, List, Tuple
 from nougat.dataset.split_utils.markdown_parser import parse_markdown_lines
 from nougat.dataset.split_utils.line_matcher import filter_and_match_lines
 from nougat.dataset.split_utils.page_boundary import locate_page_boundaries, get_span_of_pages
+from nougat.dataset.split_utils.content_separator import separate_content_by_type
 
 
 def split_markdown(
-    doc: str, pdf: pypdf.PdfReader, figure_info: List[Dict], debug=False
+    doc: str, pdf: pypdf.PdfReader, figure_info: List[Dict]
 ) -> Tuple[List[str], List[Tuple[int, int]], List[Tuple[int, int]], List[int]]:
     """
     Split a PDF document into Markdown paragraphs.
@@ -34,8 +35,11 @@ def split_markdown(
     # 解析markdown文本
     doc_lines, text_obj_map, line_tag_map = parse_markdown_lines(doc)
 
-    # 过滤和匹配行
-    valid_lines_of_pages = filter_and_match_lines(pdf, doc_lines, debug=debug)
+    # 分离内容
+    separation_result = separate_content_by_type(doc_lines, line_tag_map)
+
+    # 过滤和匹配行 TODO: 需要修改
+    valid_lines_of_pages = filter_and_match_lines(pdf, doc_lines)
 
     # 定位页边界
     page_start_positions, page_end_positions = locate_page_boundaries(

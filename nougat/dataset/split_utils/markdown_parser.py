@@ -56,7 +56,7 @@ def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int,
     doc = encode_formula_in_markdown(doc)
 
     # 3. 构建text_to_object映射
-    text_obj_map = build_text_to_object(doc)
+    text_obj_map = build_tfa_text_to_object(doc)
     # with open("text_obj_map.json", "w", encoding="utf-8") as f:
     #     json.dump(text_obj_map, f, ensure_ascii=False, indent=4)
 
@@ -108,13 +108,14 @@ def flatten_nested_text_tag(doc: str) -> str:
     return ''.join(result)
 
 
-def build_text_to_object(doc: str) -> Dict[str, str]:
+def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     """
-    构建标题内容到完整对象内容的映射
+    构建TFA标题内容到完整对象内容的映射
     例如：
     {
         '图1的标题': '[FIGURE]...[ENDFIGURE]完整内容',
-        '表1的标题': '[TABLE]...[ENDTABLE]完整内容'
+        '表1的标题': '[TABLE]...[ENDTABLE]完整内容',
+        '算法1的标题': '[ALGORITHM]...[ENDALGORITHM]完整内容'
     }
     """
     text_to_obj = {}
