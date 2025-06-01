@@ -8,6 +8,7 @@ class ContentLine:
 
     line_index: int  # 在原始doc_lines中的行号
     tag_type: str  # 标签类型，如'TEXT', 'FIGURE_TITLE'等
+    content_type: str  # 内容类型，如'ordered', 'unordered'
     content: str  # 行的文本内容
     is_tag_line: bool = False  # 是否是独立的标签行（如[TEXT]、[ENDTEXT]）
 
@@ -15,6 +16,7 @@ class ContentLine:
         return ContentLine(
             line_index=self.line_index,
             tag_type=self.tag_type,
+            content_type=self.content_type,
             content=content,
             is_tag_line=self.is_tag_line,
         )
@@ -48,6 +50,7 @@ def separate_content_by_type(
         content_line = ContentLine(
             line_index=line_index,
             tag_type=tag_info['type'],
+            content_type=tag_info['content_type'],
             content=line_content.strip(),
             is_tag_line=tag_info.get('is_tag_line', False),
         )
@@ -99,7 +102,6 @@ def extract_clean_text_from_content_line(content_line: ContentLine) -> str:
         'TABLE_TITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
         'ALGORITHM_TITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
         'THANK_NOTE': r'\[THANK_NOTE\](.*?)\[ENDTHANK_NOTE\]',
-        # 特殊格式：脚注
         'FOOTNOTE': r'\[FOOTNOTE:.*?\](.*?)\[ENDFOOTNOTE\]',
     }
 
@@ -117,8 +119,5 @@ def extract_clean_text_from_content_line(content_line: ContentLine) -> str:
         if tag_type in ['TITLE', 'SUBTITLE']:
             # 移除markdown标记
             text = re.sub(r'^#+\s*', '', text)
-        elif tag_type == 'FOOTNOTE':
-            # 移除"Footnote X:"前缀
-            text = re.sub(r'^Footnote\s+\d+:\s*', '', text)
 
     return text.strip()

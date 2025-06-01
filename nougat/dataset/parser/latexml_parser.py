@@ -203,7 +203,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
             else:
                 printerr("Unable to find AuthorList to append author", file=sys.stderr)
             parse_latexml_children(child, author)
-        elif sv.match(".ltx_author_notes", child):
+        elif sv.match(".ltx_author_notes, .ltx_acknowledgements", child):
             author_note = parent.append(AuthorNote())
             parse_latexml_children(child, author_note)
         elif sv.match(
@@ -453,7 +453,7 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                 printerr("Caption outside figure/table/algorithm element", file=sys.stderr)
                 para = parent.append(Paragraph())
                 parse_latexml_children(child, para)
-        elif sv.match(".ltx_abstract, .ltx_acknowledgements", child):
+        elif sv.match(".ltx_abstract", child):
             abstract = parent.append(Section())
             parse_latexml_children(child, abstract)
         elif sv.match(".ltx_ERROR", child):

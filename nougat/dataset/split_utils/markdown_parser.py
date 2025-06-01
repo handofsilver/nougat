@@ -4,36 +4,77 @@ from nougat.dataset.split_utils.markdown_encoder import encode_formula_in_markdo
 import json
 
 
+def reorder_ieee_copyright(doc: str) -> str:
+    """
+    重新排序IEEE版权声明
+    查找包含'IEEE Copyright Notice'和'Personal use of this material is permitted.'的[TEXT]标签对，
+    将其移动到文档最前面
+    """
+    ieee_copyright_pattern = r'\[TEXT\](.*?)\[ENDTEXT\]'
+    ieee_copyright_block = None
+
+    # 查找包含IEEE版权信息的TEXT标签对
+    for match in re.finditer(ieee_copyright_pattern, doc, re.DOTALL):
+        content = match.group(1)
+        if (
+            'IEEE Copyright Notice' in content
+            and 'Personal use of this material is permitted' in content
+        ):
+            ieee_copyright_block = match.group(0)  # 完整的[TEXT]...[ENDTEXT]块
+            break
+
+    if ieee_copyright_block:
+        # 从原位置移除IEEE版权块
+        doc_without_copyright = re.sub(re.escape(ieee_copyright_block), '', doc, count=1)
+        # 将IEEE版权块移到文档最前面
+        doc = ieee_copyright_block + '\n' + doc_without_copyright
+
+    return doc
+
+
 def preprocess_author_and_thank_note(doc: str) -> str:
     """
     预处理作者信息和致谢注释：
-    1. 提取[THANK_NOTE]标签对
-    2. 将其移动到[ENDAUTHOR_INFO]后
-    3. 压缩[AUTHOR_INFO]中的换行
+    1. 如果[AUTHOR]中嵌套了[THANK_NOTE]，将其提取出来放到[ENDAUTHOR]后
+    2. 压缩[AUTHOR]中的换行为一行
+    3. 如果[AUTHOR]中没有[THANK_NOTE]，只做换行压缩
     """
-    # 提取[THANK_NOTE]内容
-    thank_note_pattern = r'\[THANK_NOTE\].*?\[ENDTHANK_NOTE\]'
-    thank_note = re.search(thank_note_pattern, doc, re.DOTALL)
-    thank_note_content = thank_note.group(0) if thank_note else ''
-
-    # 从[AUTHOR_INFO]中移除[THANK_NOTE]内容并压缩换行
     author_pattern = r'\[AUTHOR\](.*?)\[ENDAUTHOR\]'
-    if re.search(author_pattern, doc, re.DOTALL):
-        author_content = re.search(author_pattern, doc, re.DOTALL).group(1)
-        author_content = re.sub(thank_note_pattern, '', author_content, flags=re.DOTALL)
-        author_content = ' '.join(
-            line.strip() for line in author_content.split('\n') if line.strip()
-        )
-    else:
-        author_content = ''
+    author_match = re.search(author_pattern, doc, re.DOTALL)
 
-    # 替换原文中的[AUTHOR_INFO]部分
-    doc = re.sub(
-        author_pattern,
-        f'[AUTHOR]{author_content}[ENDAUTHOR]\n{thank_note_content}',
-        doc,
-        flags=re.DOTALL,
-    )
+    if not author_match:
+        return doc
+
+    author_full_content = author_match.group(1)
+
+    # 检查AUTHOR中是否包含THANK_NOTE
+    thank_note_pattern = r'\[THANK_NOTE\].*?\[ENDTHANK_NOTE\]'
+    thank_note_match = re.search(thank_note_pattern, author_full_content, re.DOTALL)
+
+    if thank_note_match:
+        # AUTHOR中有THANK_NOTE，需要提取出来
+        thank_note_content = thank_note_match.group(0)
+
+        # 从AUTHOR内容中移除THANK_NOTE
+        author_clean_content = re.sub(thank_note_pattern, '', author_full_content, flags=re.DOTALL)
+
+        # 压缩AUTHOR内容为一行
+        author_clean_content = ' '.join(
+            line.strip() for line in author_clean_content.split('\n') if line.strip()
+        )
+
+        # 替换整个AUTHOR部分，将THANK_NOTE放到外面
+        replacement = f'[AUTHOR]{author_clean_content}[ENDAUTHOR]\n{thank_note_content}\n'
+        doc = re.sub(author_pattern, replacement, doc, flags=re.DOTALL)
+    else:
+        # AUTHOR中没有THANK_NOTE，只压缩换行
+        author_clean_content = ' '.join(
+            line.strip() for line in author_full_content.split('\n') if line.strip()
+        )
+
+        # 替换AUTHOR内容
+        replacement = f'[AUTHOR]{author_clean_content}[ENDAUTHOR]'
+        doc = re.sub(author_pattern, replacement, doc, flags=re.DOTALL)
 
     return doc
 
@@ -51,23 +92,28 @@ def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int,
     # 1. 预处理：处理作者信息和致谢注释
     doc = preprocess_author_and_thank_note(doc)
 
-    # 2. 预处理：展平嵌套标签，编码公式
+    # 2. 预处理：展平嵌套标签
     doc = flatten_nested_text_tag(doc)
+
+    # 3. 重新排序IEEE版权声明
+    doc = reorder_ieee_copyright(doc)
+
+    # 4. 编码公式
     doc = encode_formula_in_markdown(doc)
 
-    # 3. 构建text_to_object映射
+    # 5. 构建text_to_object映射
     text_obj_map = build_tfa_text_to_object(doc)
     # with open("text_obj_map.json", "w", encoding="utf-8") as f:
     #     json.dump(text_obj_map, f, ensure_ascii=False, indent=4)
 
-    # 4. 将TFA标签替换为其标题
+    # 6. 将TFA标签替换为其标题
     doc = replace_tfa_with_titles(doc)
 
-    # 5. 获取文档行
+    # 7. 获取文档行
     doc_lines = doc.split("\n")
     doc_lines = [line.strip() for line in doc_lines if line.strip()]
 
-    # 6. 构建行标签映射
+    # 8. 构建行标签映射
     line_tag_map = build_line_tag_mapping(doc_lines)
 
     return doc_lines, text_obj_map, line_tag_map

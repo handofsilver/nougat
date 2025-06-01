@@ -233,11 +233,8 @@ class LineMatcher:
         self.unordered_lines = unordered_lines
 
         # 合并所有清理后的内容作为完整文档（用于子串匹配）
-        all_clean_lines = [line.content for line in ordered_lines + unordered_lines]
-        self.strip_doc_lines = [
-            squeeze_text(line).lower() for line in all_clean_lines if line.strip()
-        ]
-        self.strip_doc_text = "".join(self.strip_doc_lines)
+        all_content_lines = ordered_lines + unordered_lines
+        self.strip_doc_lines = [line for line in all_content_lines if line.content.strip()]
 
         # 构建有序内容的倒排索引
         ordered_text_lines = [line.content for line in ordered_lines]
@@ -333,7 +330,7 @@ class LineMatcher:
         strip_pdf_line: str,
         words: List[str],
         inverted_index: Dict,
-        content_lines: List,
+        content_lines: List,  # List[ContentLine]
         content_type: str,
     ) -> MatchResult:
         """使用指定的倒排索引进行匹配"""
@@ -380,19 +377,26 @@ class LineMatcher:
         """检查子串匹配，区分单行匹配和跨行匹配"""
 
         # 1. 检查是否为某个文档行的完全匹配或子串
-        for idx, strip_doc_line in enumerate(self.strip_doc_lines):
+        for idx, content_line in enumerate(self.strip_doc_lines):
+            strip_doc_line = squeeze_text(content_line.content).lower()
+
             if strip_pdf_line == strip_doc_line:
                 # 完全匹配
                 return MatchResult(
-                    is_valid=True, matched_index=idx, match_score=1.0, match_type='exact_substring'
+                    is_valid=True,
+                    matched_index=content_line.line_index,
+                    match_score=1.0,
+                    match_type='exact_substring',
+                    content_type=content_line.content_type,
                 )
             elif strip_pdf_line in strip_doc_line:
                 # 单行子串匹配
                 return MatchResult(
                     is_valid=True,
-                    matched_index=idx,
+                    matched_index=content_line.line_index,
                     match_score=1.0,
                     match_type='single_line_substring',
+                    content_type=content_line.content_type,
                 )
             elif (
                 not MatchingRules.is_too_short(strip_doc_line) and strip_doc_line in strip_pdf_line
@@ -400,20 +404,11 @@ class LineMatcher:
                 # PDF行包含整个文档行
                 return MatchResult(
                     is_valid=True,
-                    matched_index=idx,
+                    matched_index=content_line.line_index,
                     match_score=1.0,
                     match_type='reverse_substring',
+                    content_type=content_line.content_type,
                 )
-
-        # 2. 检查跨行匹配（仅对较长的PDF行）
-        if len(strip_pdf_line) > 20 and strip_pdf_line in self.strip_doc_text:
-            # 找到匹配的起始位置
-            return MatchResult(
-                is_valid=True,
-                matched_index=None,
-                match_score=1.0,
-                match_type='multi_line_substring',
-            )
 
         return MatchResult(is_valid=False)
 
