@@ -1,5 +1,7 @@
+import re
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
+from nougat.dataset.split_utils.markdown_encoder import encode_formula_in_markdown
 
 
 @dataclass
@@ -7,6 +9,7 @@ class ContentLine:
     """表示一行内容的数据结构"""
 
     line_index: int  # 在原始doc_lines中的行号
+    local_index: int  # 在ordered或unordered中的局部索引
     tag_type: str  # 标签类型，如'TEXT', 'FIGURE_TITLE'等
     content_type: str  # 内容类型，如'ordered', 'unordered'
     content: str  # 行的文本内容
@@ -15,6 +18,7 @@ class ContentLine:
     def replace_content(self, content: str):
         return ContentLine(
             line_index=self.line_index,
+            local_index=self.local_index,
             tag_type=self.tag_type,
             content_type=self.content_type,
             content=content,
@@ -35,8 +39,10 @@ def separate_content_by_type(
     Returns:
         Tuple[List[ContentLine], List[ContentLine]]: 分别返回有序和无序内容的纯文本列表
     """
-    ordered_text_lines = []
-    unordered_text_lines = []
+    doc_lines = encode_formula_in_markdown(doc_lines)
+
+    ordered_length, unordered_length = 0, 0
+    ordered_text_lines, unordered_text_lines = [], []
 
     for line_index, line_content in enumerate(doc_lines):
         # 获取该行的标签信息
@@ -46,31 +52,38 @@ def separate_content_by_type(
             # 如果没有标签信息，跳过该行（理论上不应该发生）
             continue
 
+        local_index = ordered_length if tag_info['content_type'] == 'ordered' else unordered_length
+
         # 创建ContentLine对象
         content_line = ContentLine(
             line_index=line_index,
+            local_index=local_index,
             tag_type=tag_info['type'],
             content_type=tag_info['content_type'],
             content=line_content.strip(),
             is_tag_line=tag_info.get('is_tag_line', False),
         )
 
-        clean_text = extract_clean_text_from_content_line(content_line)
-        if not clean_text:
+        clean_lowercase_text = get_lowercase_text_for_matching(content_line)
+        if not clean_lowercase_text:
             continue
 
-        # 根据content_type分类, 并转为小写
+        content_line = content_line.replace_content(clean_lowercase_text)
+
+        # 根据content_type分类
         if tag_info['content_type'] == 'ordered':
-            ordered_text_lines.append(content_line.replace_content(clean_text.lower()))
+            ordered_text_lines.append(content_line)
+            ordered_length += 1
         else:
-            unordered_text_lines.append(content_line.replace_content(clean_text.lower()))
+            unordered_text_lines.append(content_line)
+            unordered_length += 1
 
     return ordered_text_lines, unordered_text_lines
 
 
-def extract_clean_text_from_content_line(content_line: ContentLine) -> str:
+def get_lowercase_text_for_matching(content_line: ContentLine) -> str:
     """
-    从ContentLine中提取用于匹配的干净文本
+    从ContentLine中提取用于匹配的干净文本，转为小写
 
     Args:
         content_line: 内容行对象
@@ -87,9 +100,7 @@ def extract_clean_text_from_content_line(content_line: ContentLine) -> str:
 
     # 对于TEXT类型，直接返回内容（已经是纯文本）
     if tag_type == 'TEXT':
-        return text.strip()
-
-    import re
+        return text.strip().lower()
 
     # 定义标签清理规则
     tag_patterns = {
@@ -108,7 +119,7 @@ def extract_clean_text_from_content_line(content_line: ContentLine) -> str:
     # 获取对应的正则模式
     pattern = tag_patterns.get(tag_type)
     if not pattern:
-        return text.strip()
+        return text.strip().lower()
 
     # 提取标签内容
     match = re.search(pattern, text, re.DOTALL)
@@ -117,7 +128,6 @@ def extract_clean_text_from_content_line(content_line: ContentLine) -> str:
 
         # 特殊后处理
         if tag_type in ['TITLE', 'SUBTITLE']:
-            # 移除markdown标记
-            text = re.sub(r'^#+\s*', '', text)
+            text = re.sub(r'^#+\s*', '', text)  # 移除markdown标记
 
-    return text.strip()
+    return text.strip().lower()

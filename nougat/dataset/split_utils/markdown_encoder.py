@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 # 希腊字母
 greek_letters = {
@@ -337,7 +338,7 @@ def clear_semantic_symbol(text):
     return text
 
 
-def encode_formula_in_markdown(doc, debug=False):
+def encode_formula_in_markdown(doc_lines: List[str], debug=False):
     """
     将md中的公式尽可能转换为编译后的文本
     1. 根据转义方括号或圆括号提取出doc中的所有公式
@@ -346,6 +347,8 @@ def encode_formula_in_markdown(doc, debug=False):
     4. 将doc中的公式替换为编译后的文本
     5. 返回编译后的文本
     """
+
+    doc = "\n".join(doc_lines)
 
     def process_formula(match):
         formula = match.group(1)  # 提取公式内容
@@ -373,7 +376,7 @@ def encode_formula_in_markdown(doc, debug=False):
     for pattern, replacement_func in patterns:
         doc = re.sub(pattern, lambda m: replacement_func(m), doc, flags=re.DOTALL)
 
-    return doc
+    return doc.split("\n")
 
 
 if __name__ == "__main__":

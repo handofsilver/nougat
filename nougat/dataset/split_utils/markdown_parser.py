@@ -1,6 +1,5 @@
 import re
 from typing import List, Dict, Tuple
-from nougat.dataset.split_utils.markdown_encoder import encode_formula_in_markdown
 import json
 
 
@@ -98,22 +97,17 @@ def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int,
     # 3. 重新排序IEEE版权声明
     doc = reorder_ieee_copyright(doc)
 
-    # 4. 编码公式
-    doc = encode_formula_in_markdown(doc)
-
-    # 5. 构建text_to_object映射
+    # 4. 构建text_to_object映射
     text_obj_map = build_tfa_text_to_object(doc)
-    # with open("text_obj_map.json", "w", encoding="utf-8") as f:
-    #     json.dump(text_obj_map, f, ensure_ascii=False, indent=4)
 
-    # 6. 将TFA标签替换为其标题
+    # 5. 将TFA标签替换为其标题
     doc = replace_tfa_with_titles(doc)
 
-    # 7. 获取文档行
+    # 6. 获取文档行
     doc_lines = doc.split("\n")
     doc_lines = [line.strip() for line in doc_lines if line.strip()]
 
-    # 8. 构建行标签映射
+    # 7. 构建行标签映射
     line_tag_map = build_line_tag_mapping(doc_lines)
 
     return doc_lines, text_obj_map, line_tag_map
@@ -276,11 +270,6 @@ def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
                 'content_type': 'ordered',
                 'is_tag_line': False,
             }
-
-        # if line_tag_map[line_num] is None:
-        #     print(line)
-        #     with open("error_line.txt", "a", encoding="utf-8") as f:
-        #         f.write(line + "\n")
 
     return line_tag_map
 

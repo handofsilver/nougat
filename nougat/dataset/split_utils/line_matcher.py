@@ -1,6 +1,6 @@
 import jieba
 import re
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 from nougat.dataset.split_utils.text_cleaner import squeeze_text
 from nougat.dataset.split_utils.string_matcher import get_char_match_score
@@ -19,7 +19,8 @@ class MatchResult:
     matched_index: Optional[int] = None
     match_score: Optional[float] = None
     match_type: Optional[str] = None  # 'exact', 'inverted', 'rule'
-    content_type: Optional[str] = None  # 'ordered', 'unordered' - 新增
+    content_type: Optional[str] = None  # 'ordered', 'unordered'
+    local_index: Optional[int] = None  # 在ordered或unordered中的局部索引
 
 
 @dataclass
@@ -30,11 +31,12 @@ class PageMatchContext:
     strip_page_lines: List[str]
     words_by_line: List[List[str]]
     last_line: str = ""
+    current_ordered_pointer: int = 0  # 用于窗口限制的ordered指针
 
 
 @dataclass
 class DualMatchResult:
-    """双重匹配结果 - 新增"""
+    """双重匹配结果"""
 
     pdf_line_index: int
     pdf_line_content: str
@@ -105,7 +107,9 @@ class TextPreprocessor:
         return list(set(new_words))
 
     @staticmethod
-    def preprocess_page_lines(page_lines: List[str]) -> PageMatchContext:
+    def preprocess_page_lines(
+        page_lines: List[str], current_ordered_pointer: int
+    ) -> PageMatchContext:
         """预处理页面行数据"""
         strip_page_lines = [squeeze_text(line) for line in page_lines]
         single_words_by_line = [jieba.lcut(line) for line in page_lines]
@@ -114,7 +118,10 @@ class TextPreprocessor:
         ]
 
         return PageMatchContext(
-            page_lines=page_lines, strip_page_lines=strip_page_lines, words_by_line=words_by_line
+            page_lines=page_lines,
+            strip_page_lines=strip_page_lines,
+            words_by_line=words_by_line,
+            current_ordered_pointer=current_ordered_pointer,
         )
 
 
@@ -184,26 +191,7 @@ class MatchingRules:
         """判断是否为数字行"""
         tmp_line = re.sub(r"-|_| ", "", strip_line)
         tmp_line = tmp_line.strip("{}[]<>()（）")
-        return tmp_line.isdigit()  # 如果去除标点符号后的PDF行文本是数字，则认为有效
-
-    @staticmethod
-    def is_short_alpha_line(strip_line: str) -> bool:
-        """判断是否为短字母行"""
-        tmp_line = re.sub(r"-|_| ", "", strip_line)
-        tmp_line = tmp_line.strip("{}[]<>()（）")
-        # 如果去除标点符号后的PDF行文本是字母，并且长度小于10，则认为有效
-        return tmp_line.isalpha() and len(tmp_line) < 10
-
-    @staticmethod
-    def is_alpha_with_short_context(strip_line: str, last_line: str, next_line: str) -> bool:
-        """判断是否为有短上下文的字母行"""
-        tmp_line = re.sub(r"-|_| ", "", strip_line)
-        tmp_line = tmp_line.strip("{}[]<>()（）")
-
-        # 如果去除标点符号后的PDF行文本是字母，并且上一行或下一行长度小于15，则认为有效
-        return tmp_line.isalpha() and (
-            (last_line and len(last_line) < 15) or (next_line and len(next_line) < 15)
-        )
+        return tmp_line.isdigit()
 
     @staticmethod
     def should_accept_by_score(strip_line: str, max_score: float) -> bool:
@@ -220,36 +208,26 @@ class MatchingRules:
 
 
 class LineMatcher:
-    """行匹配器 - 统一使用双重索引方案"""
+    """行匹配器 - 统一使用双重索引方案，支持窗口限制"""
 
-    def __init__(self, ordered_lines, unordered_lines):
-        """初始化匹配器
-
-        Args:
-            ordered_lines: 有序内容行（ContentLine列表）
-            unordered_lines: 无序内容行（ContentLine列表）
-        """
+    def __init__(self, ordered_lines, unordered_lines, window_size: int = 10):
+        """初始化匹配器"""
         self.ordered_lines = ordered_lines
         self.unordered_lines = unordered_lines
+        self.window_size = window_size
 
-        # 合并所有清理后的内容作为完整文档（用于子串匹配）
-        all_content_lines = ordered_lines + unordered_lines
-        self.strip_doc_lines = [line for line in all_content_lines if line.content.strip()]
-
-        # 构建有序内容的倒排索引
+        # 构建倒排索引
         ordered_text_lines = [line.content for line in ordered_lines]
         self.ordered_inverted_index = InvertedIndexBuilder.build_inverted_index(ordered_text_lines)
 
-        # 构建无序内容的倒排索引
         unordered_text_lines = [line.content for line in unordered_lines]
         self.unordered_inverted_index = InvertedIndexBuilder.build_inverted_index(
             unordered_text_lines
         )
 
-        print(f"🔍 双重索引匹配器初始化:")
-        print(f"   - 有序内容: {len(ordered_lines)} 行")
-        print(f"   - 无序内容: {len(unordered_lines)} 行")
-        print(f"   - 合并后总行数: {len(self.strip_doc_lines)} 行")
+        print(
+            f"🔍 双重索引匹配器初始化: 有序{len(ordered_lines)}行, 无序{len(unordered_lines)}行, 窗口{window_size}"
+        )
 
     def match_single_line(
         self,
@@ -260,112 +238,177 @@ class LineMatcher:
         line_index: int,
     ) -> MatchResult:
         """匹配单个PDF行"""
-
         # 1. 快速规则检查
         if MatchingRules.is_too_short(strip_pdf_line):
             return MatchResult(is_valid=False)
 
-        # 2. 预处理特殊行
         strip_pdf_line = MatchingRules.preprocess_abstract_line(strip_pdf_line)
 
+        # 2. 规则匹配
+        if MatchingRules.is_digit_line(strip_pdf_line):
+            return MatchResult(is_valid=False)
+
         # 3. 子串匹配检查（包含精确匹配）
-        substring_result = self._check_substring_match(strip_pdf_line)
+        substring_result = self._check_substring_match_with_priority_windowed(
+            strip_pdf_line, context
+        )
         if substring_result.is_valid:
             return substring_result
 
-        # 4. 规则匹配
-        if MatchingRules.is_digit_line(strip_pdf_line):
-            return MatchResult(is_valid=False)  # 数字行跳过
+        # 4. 双重倒排索引匹配（兜底策略）
+        return self._match_with_dual_inverted_index_windowed(strip_pdf_line, words, context)
 
-        if MatchingRules.is_short_alpha_line(strip_pdf_line):
-            return MatchResult(is_valid=False)  # 短字母行跳过
+    def _check_substring_matches(
+        self, strip_pdf_line: str, content_lines: List
+    ) -> List[MatchResult]:
+        """通用子串匹配逻辑，返回MatchResult列表"""
+        matches = []
 
-        # 获取上下文
-        next_line = ""
-        if line_index + 1 < len(context.strip_page_lines):
-            next_line = context.strip_page_lines[line_index + 1]
+        for content_line in content_lines:
+            strip_doc_line = squeeze_text(content_line.content)
+            match_type = None
 
-        if MatchingRules.is_alpha_with_short_context(strip_pdf_line, context.last_line, next_line):
-            return MatchResult(is_valid=False)  # 有短上下文的字母行跳过
+            if strip_pdf_line == strip_doc_line:
+                match_type = 'exact_substring'
+            elif strip_pdf_line in strip_doc_line:
+                match_type = 'single_line_substring'
+            elif (
+                not MatchingRules.is_too_short(strip_doc_line) and strip_doc_line in strip_pdf_line
+            ):
+                match_type = 'reverse_substring'
 
-        # 5. 双重倒排索引匹配
-        return self._match_with_dual_inverted_index(strip_pdf_line, words)
+            if match_type:
+                result = MatchResult(
+                    is_valid=True,
+                    matched_index=content_line.line_index,
+                    local_index=content_line.local_index,
+                    match_score=1.0,
+                    match_type=match_type,
+                    content_type=content_line.content_type,
+                )
+                matches.append(result)
 
-    def _match_with_dual_inverted_index(self, strip_pdf_line: str, words: List[str]) -> MatchResult:
-        """使用双重倒排索引进行匹配"""
-        # 先尝试有序内容匹配
+        return matches
+
+    def _check_substring_match_with_priority_windowed(
+        self, strip_pdf_line: str, context: PageMatchContext
+    ) -> MatchResult:
+        """带优先级的子串匹配：优先ordered（按距离排序） > unordered"""
+        # 获取所有匹配
+        ordered_matches = self._check_substring_matches(strip_pdf_line, self.ordered_lines)
+        unordered_matches = self._check_substring_matches(strip_pdf_line, self.unordered_lines)
+
+        # 优先处理ordered匹配：按距离排序
+        if ordered_matches:
+
+            def distance_key(match: MatchResult, punishment: int = self.window_size / 2):
+                if match.local_index >= context.current_ordered_pointer:
+                    return match.local_index - context.current_ordered_pointer
+                else:
+                    return context.current_ordered_pointer - match.local_index + punishment
+
+            ordered_matches.sort(key=distance_key)
+            ordered_result = ordered_matches[0]
+
+            distance = abs(ordered_result.local_index - context.current_ordered_pointer)
+            if distance <= self.window_size:
+                self._update_ordered_pointer(context, ordered_result.local_index)
+                return ordered_result
+
+        # 如果没有ordered匹配，尝试unordered
+        if unordered_matches:
+            unordered_result = unordered_matches[0]
+            return unordered_result
+
+        return MatchResult(is_valid=False)
+
+    def _match_with_dual_inverted_index_windowed(
+        self, strip_pdf_line: str, words: List[str], context: PageMatchContext
+    ) -> MatchResult:
+        """使用双重倒排索引进行匹配（兜底策略，支持窗口限制）"""
+        # 分别尝试ordered和unordered匹配
         ordered_result = self._match_with_index(
-            strip_pdf_line, words, self.ordered_inverted_index, self.ordered_lines, 'ordered'
+            strip_pdf_line,
+            words,
+            self.ordered_inverted_index,
+            self.ordered_lines,
+            'ordered',
+            context,
         )
-
-        # 如果有序内容匹配成功且分数较高，直接返回
-        if (
-            ordered_result.is_valid
-            and ordered_result.match_score
-            and ordered_result.match_score > 0.8
-        ):
-            return ordered_result
-
-        # 尝试无序内容匹配
         unordered_result = self._match_with_index(
-            strip_pdf_line, words, self.unordered_inverted_index, self.unordered_lines, 'unordered'
+            strip_pdf_line,
+            words,
+            self.unordered_inverted_index,
+            self.unordered_lines,
+            'unordered',
+            None,
         )
 
-        # 选择更好的匹配结果
+        # 选择最佳结果
         if not ordered_result.is_valid and not unordered_result.is_valid:
             return MatchResult(is_valid=False)
-        elif not ordered_result.is_valid:
+        if not ordered_result.is_valid and unordered_result.is_valid:
             return unordered_result
-        elif not unordered_result.is_valid:
+        if not unordered_result.is_valid and ordered_result.is_valid:
+            self._update_ordered_pointer(context, ordered_result.local_index)
             return ordered_result
+
+        # 两个都有效，选择分数更高的
+        if (unordered_result.match_score or 0) > (ordered_result.match_score or 0):
+            return unordered_result
         else:
-            # 两个都有效，选择分数更高的
-            if (unordered_result.match_score or 0) > (ordered_result.match_score or 0):
-                return unordered_result
-            else:
-                return ordered_result
+            self._update_ordered_pointer(context, ordered_result.local_index)
+            return ordered_result
 
     def _match_with_index(
         self,
         strip_pdf_line: str,
         words: List[str],
         inverted_index: Dict,
-        content_lines: List,  # List[ContentLine]
+        content_lines: List,
         content_type: str,
+        context: Optional[PageMatchContext],
     ) -> MatchResult:
-        """使用指定的倒排索引进行匹配"""
-        # 获取候选行
+        """使用倒排索引进行匹配，支持可选的窗口限制"""
         candidates = InvertedIndexBuilder.get_candidates_from_index(words, inverted_index)
-
         if not candidates:
             return MatchResult(is_valid=False)
 
+        # 对ordered内容应用窗口过滤
+        if content_type == 'ordered' and context:
+            # current_ordered_pointer <= idx <= current_ordered_pointer + window_size
+            windowed_candidates = [
+                idx
+                for idx in candidates
+                if context.current_ordered_pointer <= idx
+                and idx <= context.current_ordered_pointer + self.window_size
+            ]
+            candidates = windowed_candidates if windowed_candidates else candidates
+
         # 计算匹配分数
         scores = []
-        for idx in candidates:
-            if idx < len(content_lines):
-                content_line = content_lines[idx]
-                score = get_char_match_score(content=content_line.content, query=strip_pdf_line)
+        for local_index in candidates:
+            if local_index < len(content_lines):
+                score = get_char_match_score(
+                    content=content_lines[local_index].content, query=strip_pdf_line
+                )
                 scores.append(score)
-                # 早停优化
-                if score > 0.9:
+                if score > 0.9:  # 早停优化
                     break
 
         if not scores:
             return MatchResult(is_valid=False)
 
         max_score = max(scores)
-        is_valid = MatchingRules.should_accept_by_score(strip_pdf_line, max_score)
-
-        if is_valid:
+        if MatchingRules.should_accept_by_score(strip_pdf_line, max_score):
             best_idx = scores.index(max_score)
-            local_matched_index = candidates[best_idx]
-            # 转换为原始文档中的行索引
-            original_line_index = content_lines[local_matched_index].line_index
+            local_index = candidates[best_idx]
+            original_line_index = content_lines[local_index].line_index
 
             return MatchResult(
                 is_valid=True,
                 matched_index=original_line_index,
+                local_index=local_index,
                 match_score=max_score,
                 match_type='dual_inverted',
                 content_type=content_type,
@@ -373,44 +416,9 @@ class LineMatcher:
 
         return MatchResult(is_valid=False)
 
-    def _check_substring_match(self, strip_pdf_line: str) -> MatchResult:
-        """检查子串匹配，区分单行匹配和跨行匹配"""
-
-        # 1. 检查是否为某个文档行的完全匹配或子串
-        for idx, content_line in enumerate(self.strip_doc_lines):
-            strip_doc_line = squeeze_text(content_line.content).lower()
-
-            if strip_pdf_line == strip_doc_line:
-                # 完全匹配
-                return MatchResult(
-                    is_valid=True,
-                    matched_index=content_line.line_index,
-                    match_score=1.0,
-                    match_type='exact_substring',
-                    content_type=content_line.content_type,
-                )
-            elif strip_pdf_line in strip_doc_line:
-                # 单行子串匹配
-                return MatchResult(
-                    is_valid=True,
-                    matched_index=content_line.line_index,
-                    match_score=1.0,
-                    match_type='single_line_substring',
-                    content_type=content_line.content_type,
-                )
-            elif (
-                not MatchingRules.is_too_short(strip_doc_line) and strip_doc_line in strip_pdf_line
-            ):
-                # PDF行包含整个文档行
-                return MatchResult(
-                    is_valid=True,
-                    matched_index=content_line.line_index,
-                    match_score=1.0,
-                    match_type='reverse_substring',
-                    content_type=content_line.content_type,
-                )
-
-        return MatchResult(is_valid=False)
+    def _update_ordered_pointer(self, context: PageMatchContext, new_pointer: int):
+        """更新context中的ordered指针"""
+        context.current_ordered_pointer = new_pointer
 
 
 # ================================
@@ -420,7 +428,7 @@ class LineMatcher:
 
 def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
     """
-    过滤和匹配PDF中的行与文档中的行（统一双重索引方案）
+    过滤和匹配PDF中的行与文档中的行（统一双重索引方案，支持窗口限制）
 
     Args:
         pdf: PDF文件对象
@@ -430,8 +438,8 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
     Returns:
         (valid_lines_of_pages, detailed_mappings): 有效行列表和详细映射信息
     """
-    # 初始化匹配器
-    matcher = LineMatcher(ordered_lines, unordered_lines)
+    # 初始化匹配器（可以调整window_size参数）
+    matcher = LineMatcher(ordered_lines, unordered_lines, window_size=20)
 
     # 获取PDF页面数据
     raw_lines_of_pages = extract_lower_pdf_lines(pdf)
@@ -440,9 +448,10 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
     valid_lines_of_pages = []
     detailed_mappings = []
 
+    current_ordered_pointer = 0
     for page_idx, page_lines in enumerate(raw_lines_of_pages):
         # 预处理当前页
-        context = TextPreprocessor.preprocess_page_lines(page_lines)
+        context = TextPreprocessor.preprocess_page_lines(page_lines, current_ordered_pointer)
         valid_lines = []
         page_mappings = []
 
@@ -475,6 +484,12 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
 
         valid_lines_of_pages.append(valid_lines)
         detailed_mappings.append(page_mappings)
+
+        current_ordered_pointer = context.current_ordered_pointer
+        # 为下一页保持ordered指针的连续性
+        print(
+            f"📄 页面 {page_idx}: 处理了 {len(page_lines)} 行PDF，{len(valid_lines)} 行有效，ordered指针: {context.current_ordered_pointer}"
+        )
 
     return valid_lines_of_pages, detailed_mappings
 
