@@ -40,7 +40,7 @@ class DualMatchResult:
 
     pdf_line_index: int
     pdf_line_content: str
-    matched_md_line_index: Optional[int] = None
+    matched_doc_line_index: Optional[int] = None
     match_score: Optional[float] = None
     match_type: Optional[str] = None
     content_type: Optional[str] = None  # 'ordered', 'unordered'
@@ -467,7 +467,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
             mapping = DualMatchResult(
                 pdf_line_index=i,
                 pdf_line_content=pdf_line,
-                matched_md_line_index=result.matched_index,
+                matched_doc_line_index=result.matched_index,
                 match_score=result.match_score,
                 match_type=result.match_type,
                 content_type=result.content_type,
