@@ -98,8 +98,6 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
         html (BeautifulSoup): The BeautifulSoup object containing the HTML data.
         parent (Element): The parent element to which the parsed children will be added.
     """
-    if html is None:
-        return
     for child in html.children:
         classes = _get_classes(child)
         if isinstance(child, NavigableString):

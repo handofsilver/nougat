@@ -10,12 +10,13 @@ import pypdf
 from typing import Dict, List, Tuple
 from nougat.dataset.split_utils.markdown_parser import parse_markdown_lines
 from nougat.dataset.split_utils.line_matcher import filter_and_match_lines
-from nougat.dataset.split_utils.page_boundary import locate_page_boundaries, get_span_of_pages
+from nougat.dataset.split_utils.page_splitter import PageSplitter
+from nougat.dataset.split_utils.character_splitter import CharacterSplitter
 from nougat.dataset.split_utils.content_separator import separate_content_by_type
 
 
 def split_markdown(
-    doc: str, pdf: pypdf.PdfReader, figure_info: List[Dict]
+    doc: str, pdf: pypdf.PdfReader, figure_info: Dict
 ) -> Tuple[List[str], List[Tuple[int, int]], List[Tuple[int, int]], List[int]]:
     """
     Split a PDF document into Markdown paragraphs.
@@ -23,7 +24,7 @@ def split_markdown(
     Args:
         doc (str): latex 转 html 再转 markdown 后 md 文本内容.
         pdf (pypdf.PdfReader): 用 pypdf 读取 pdf 文件的结果.
-        figure_info (Optional[List[Dict]]): 图表信息，每个字典指定一个图表的信息，包括标题、页码和边界框.
+        figure_info (Dict): 图表信息字典，包含figures列表等信息.
 
     Returns:
         Tuple[List[str], List[Tuple[int, int]], List[Tuple[int, int]], List[int]]:
@@ -36,25 +37,76 @@ def split_markdown(
     doc_lines, text_obj_map, line_tag_map = parse_markdown_lines(doc)
 
     # 分离内容
-    separation_result = separate_content_by_type(doc_lines, line_tag_map)
+    ordered_lines, unordered_lines = separate_content_by_type(doc_lines, line_tag_map)
 
-    # 过滤和匹配行 TODO: 需要修改
-    valid_lines_of_pages = filter_and_match_lines(pdf, doc_lines)
-
-    # 定位页边界
-    page_start_positions, page_end_positions = locate_page_boundaries(
-        valid_lines_of_pages, doc_lines
+    # 使用line_matcher进行PDF到MMD的行映射
+    valid_lines_of_pages, detailed_mappings = filter_and_match_lines(
+        pdf, ordered_lines, unordered_lines
     )
 
-    # 获取分割位置
-    result = get_span_of_pages(doc_lines, page_start_positions, page_end_positions)
+    # 使用page_splitter进行行级分页
+    page_splitter = PageSplitter(doc_lines, line_tag_map)
+    doc_pages = page_splitter.split_markdown_pages(detailed_mappings)
 
-    # 根据分割位置拆分文档
+    # TODO: 使用character_splitter进行字符级分割（处理重复行）
+    # character_splitter = CharacterSplitter(doc_lines, doc_pages)
+    #
+    # # 获取重复索引
+    # duplicate_indices = character_splitter.get_duplicate_indices()
+    #
+    # # 对重复索引进行字符级分割
+    # split_results = character_splitter.split_duplicate_indices()
+    # split_results_dict = {sr.mmd_index: sr for sr in split_results}
+
+    # 暂时跳过字符级分割，直接使用行级分页结果
+    duplicate_indices = set()
+    split_results_dict = {}
+
+    # 生成最终的页面内容
     doc_text_by_pages = []
-    for start, end in result.page_spans:
-        if start > 0:
-            doc_text_by_pages.append("\n".join(doc_lines[start : end + 1]))
-        else:
-            doc_text_by_pages.append("")
+    page_spans = []
 
-    return doc_text_by_pages, result.page_spans, result.coincident_pages, result.bad_pages
+    for page_result in doc_pages:
+        page_content = []
+
+        # 处理该页面的每个mmd_line_index
+        for mmd_index in page_result.doc_lines_by_page:
+            if mmd_index not in duplicate_indices:
+                # 情况1：只出现一次，直接整行加入
+                line_content = _get_line_content(doc_lines, mmd_index)
+                if line_content:
+                    page_content.append(line_content)
+            else:
+                # 情况2：出现多次，使用字符级分割
+                if mmd_index in split_results_dict:
+                    split_result = split_results_dict[mmd_index]
+                    # 找到属于当前页面的分割片段
+                    for split in split_result.splits:
+                        if split.page_index == page_result.page_index:
+                            if split.content.strip():  # 只添加非空内容
+                                page_content.append(split.content)
+
+        # 组合页面内容
+        page_text = "\n".join(page_content)
+        doc_text_by_pages.append(page_text)
+
+        # 生成页面范围（简化处理）
+        if page_content:
+            start_line = page_result.doc_lines_by_page[0] if page_result.doc_lines_by_page else 0
+            end_line = page_result.doc_lines_by_page[-1] if page_result.doc_lines_by_page else 0
+            page_spans.append((start_line, end_line))
+        else:
+            page_spans.append((0, 0))
+
+    # 简化处理：返回空的coincident_pages和bad_pages
+    coincident_pages = []
+    bad_pages = []
+
+    return doc_text_by_pages, page_spans, coincident_pages, bad_pages
+
+
+def _get_line_content(doc_lines: List[str], mmd_index: int) -> str:
+    """获取指定行的内容"""
+    if 0 <= mmd_index < len(doc_lines):
+        return doc_lines[mmd_index]
+    return ""

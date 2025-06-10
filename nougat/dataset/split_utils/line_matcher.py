@@ -201,6 +201,39 @@ class MatchingRules:
         else:
             return max_score > 0.75
 
+    @staticmethod
+    def calculate_length_penalty(
+        pdf_content: str, mmd_content: str, min_ratio: float = 0.03
+    ) -> float:
+        """
+        计算长度比例惩罚，用于single_line_substring匹配
+
+        Args:
+            pdf_content: PDF行内容
+            mmd_content: MMD行内容
+            min_ratio: 最小长度比例阈值，默认0.03
+
+        Returns:
+            length_penalty: 长度惩罚因子 (0.1 到 1.0)
+        """
+        if not pdf_content or not mmd_content:
+            return 1.0
+
+        pdf_len = len(pdf_content.strip())
+        mmd_len = len(mmd_content.strip())
+
+        if mmd_len == 0:
+            return 1.0
+
+        length_ratio = pdf_len / mmd_len
+
+        if length_ratio >= min_ratio:
+            return 1.0  # 长度比例合理，无惩罚
+        else:
+            # 线性惩罚：比例越小，惩罚越大
+            penalty = max(length_ratio / min_ratio, 0.1)  # 最小惩罚因子为0.1
+            return penalty
+
 
 # ================================
 # 5. 核心匹配器
@@ -267,26 +300,34 @@ class LineMatcher:
         for content_line in content_lines:
             strip_doc_line = squeeze_text(content_line.content)
             match_type = None
+            match_score = 1.0
 
             if strip_pdf_line == strip_doc_line:
                 match_type = 'exact_substring'
             elif strip_pdf_line in strip_doc_line:
                 match_type = 'single_line_substring'
+                # 对single_line_substring应用长度比例惩罚
+                length_penalty = MatchingRules.calculate_length_penalty(
+                    strip_pdf_line, strip_doc_line
+                )
+                match_score = 1.0 * length_penalty
             elif (
                 not MatchingRules.is_too_short(strip_doc_line) and strip_doc_line in strip_pdf_line
             ):
                 match_type = 'reverse_substring'
 
             if match_type:
-                result = MatchResult(
-                    is_valid=True,
-                    matched_index=content_line.line_index,
-                    local_index=content_line.local_index,
-                    match_score=1.0,
-                    match_type=match_type,
-                    content_type=content_line.content_type,
-                )
-                matches.append(result)
+                # 检查惩罚后的分数是否仍然满足阈值
+                if MatchingRules.should_accept_by_score(strip_pdf_line, match_score):
+                    result = MatchResult(
+                        is_valid=True,
+                        matched_index=content_line.line_index,
+                        local_index=content_line.local_index,
+                        match_score=match_score,
+                        match_type=match_type,
+                        content_type=content_line.content_type,
+                    )
+                    matches.append(result)
 
         return matches
 
@@ -301,11 +342,11 @@ class LineMatcher:
         # 优先处理ordered匹配：按距离排序
         if ordered_matches:
 
-            def distance_key(match: MatchResult, punishment: int = self.window_size / 2):
+            def distance_key(match: MatchResult, dist_penalty: int = self.window_size / 2):
                 if match.local_index >= context.current_ordered_pointer:
                     return match.local_index - context.current_ordered_pointer
                 else:
-                    return context.current_ordered_pointer - match.local_index + punishment
+                    return context.current_ordered_pointer - match.local_index + dist_penalty
 
             ordered_matches.sort(key=distance_key)
             ordered_result = ordered_matches[0]

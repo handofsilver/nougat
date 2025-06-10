@@ -108,6 +108,9 @@ class PageSplitter:
 
             doc_pages.append(page_result)
 
+        # 后处理：基于修正后的分页结果统一处理ENDTEXT
+        doc_pages = self._post_process_all_endtext(doc_pages)
+
         return doc_pages
 
     def _build_matched_set(self, detailed_mappings: List[List]) -> Set[DocLineIndex]:
@@ -115,9 +118,44 @@ class PageSplitter:
         matched_doc_lines_set = set()
         for page_mappings in detailed_mappings:
             for mapping in page_mappings:
-                if mapping.is_valid and mapping.matched_doc_line_idx is not None:
-                    matched_doc_lines_set.add(mapping.matched_doc_line_idx)
+                if mapping.is_valid and mapping.matched_doc_line_index is not None:
+                    matched_doc_lines_set.add(mapping.matched_doc_line_index)
         return matched_doc_lines_set
+
+    def _post_process_all_endtext(self, doc_pages: List[PageResult]) -> List[PageResult]:
+        """基于修正后的分页结果统一处理ENDTEXT"""
+        # 1. 先移除所有现有的ENDTEXT行，避免重复
+        cleaned_pages = []
+        for page_result in doc_pages:
+            cleaned_lines = [
+                line_idx
+                for line_idx in page_result.doc_lines_by_page
+                if not self.is_endtext_line(line_idx)
+            ]
+            cleaned_page = PageResult(
+                page_index=page_result.page_index, doc_lines_by_page=cleaned_lines
+            )
+            cleaned_pages.append(cleaned_page)
+
+        # 2. 基于清理后的结果计算每个ordered行的最后出现页面（排除ENDTEXT）
+        last_occurrence_pages = {}
+        for page_result in cleaned_pages:
+            for line_idx in page_result.doc_lines_by_page:
+                if self.get_content_type(line_idx) == ContentType.ORDERED:
+                    last_occurrence_pages[line_idx] = page_result.page_index
+
+        # 3. 为每个页面添加合适的ENDTEXT
+        updated_pages = []
+        for page_result in cleaned_pages:
+            updated_lines = self._add_endtext_for_page(
+                page_result.doc_lines_by_page, page_result.page_index, last_occurrence_pages
+            )
+            updated_page = PageResult(
+                page_index=page_result.page_index, doc_lines_by_page=updated_lines
+            )
+            updated_pages.append(updated_page)
+
+        return updated_pages
 
     def _process_single_page(
         self,
@@ -136,8 +174,8 @@ class PageSplitter:
         # 收集有效映射并去重连续重复
         valid_mappings = []
         for mapping in page_mappings:
-            if mapping.is_valid and mapping.matched_doc_line_idx is not None:
-                doc_line_idx = mapping.matched_doc_line_idx
+            if mapping.is_valid and mapping.matched_doc_line_index is not None:
+                doc_line_idx = mapping.matched_doc_line_index
                 # 避免连续重复添加相同行
                 if not valid_mappings or valid_mappings[-1] != doc_line_idx:
                     valid_mappings.append(doc_line_idx)
@@ -195,22 +233,44 @@ class PageSplitter:
                     current_page_lines.append(doc_line_idx)
                     last_ordered_in_page = doc_line_idx
 
-        # 后处理：检查ENDTEXT
-        current_page_lines = self._post_process_endtext(current_page_lines)
+                    # 注意：ENDTEXT处理移到最后统一处理
+            # current_page_lines = self._post_process_endtext(...)
 
         page_result = PageResult(page_index=pdf_page_idx, doc_lines_by_page=current_page_lines)
 
         return page_result, page_unordered_lines, last_ordered_in_page
 
-    def _post_process_endtext(self, current_page_lines: List[DocLineIndex]) -> List[DocLineIndex]:
-        """后处理：检查并添加ENDTEXT行"""
-        if not current_page_lines:
-            return current_page_lines
+    def _add_endtext_for_page(
+        self,
+        page_lines: List[DocLineIndex],
+        page_idx: int,
+        last_occurrence_pages: Dict[DocLineIndex, int],
+    ) -> List[DocLineIndex]:
+        """为单个页面添加合适的ENDTEXT"""
+        if not page_lines:
+            return page_lines
 
-        last_line_idx = max(current_page_lines)
-        next_line_idx = last_line_idx + 1
+        # 找到当前页面中最后一个ordered内容行（按页面中出现的顺序）
+        last_ordered_line_idx = None
+        for line_idx in reversed(page_lines):
+            if self.get_content_type(line_idx) == ContentType.ORDERED:
+                last_ordered_line_idx = line_idx
+                break
 
-        if self.is_endtext_line(next_line_idx):
-            current_page_lines.append(next_line_idx)
+        if last_ordered_line_idx is None:
+            return page_lines
 
-        return current_page_lines
+        # 检查这个ordered行是否在当前页面是最后一次出现（基于修正后的结果）
+        is_last_occurrence = (
+            last_ordered_line_idx in last_occurrence_pages
+            and last_occurrence_pages[last_ordered_line_idx] == page_idx
+        )
+
+        if is_last_occurrence:
+            next_line_idx = last_ordered_line_idx + 1
+            # 只有当下一行是ENDTEXT且当前页面没有ENDTEXT时才添加
+            if self.is_endtext_line(next_line_idx) and next_line_idx not in page_lines:
+                # 创建新的列表，添加ENDTEXT
+                return page_lines + [next_line_idx]
+
+        return page_lines
