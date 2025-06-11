@@ -207,7 +207,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
             parts = []
         return ["\n[TEXT]\n" + "".join(parts + children_parts) + "\n[ENDTEXT]\n"]
     if isinstance(element, Footnote):
-        foot = f"\n[FOOTNOTE:{element.id}]"
+        foot = f"\n[FOOTNOTE:{element.id}]{element.id}"
         return [foot] + format_children(element, keep_refs) + ["[ENDFOOTNOTE]\n\n"]
     if isinstance(element, ListContainer):
         items = [

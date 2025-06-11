@@ -148,7 +148,7 @@ class PageSplitter:
                 if self.get_content_type(line_idx) == ContentType.ORDERED:
                     last_occurrence_pages[line_idx] = page_result.page_index
 
-        # 3. 为每个页面添加合适的ENDTEXT
+        # 3. 为每个页面添加合适的ENDTEXT（保持原有的偷看逻辑）
         updated_pages = []
         for page_result in cleaned_pages:
             updated_lines = self._add_endtext_for_page(
@@ -254,31 +254,24 @@ class PageSplitter:
         page_idx: int,
         last_occurrence_pages: Dict[DocLineIndex, int],
     ) -> List[DocLineIndex]:
-        """为单个页面添加合适的ENDTEXT"""
-        if not page_lines:
-            return page_lines
+        """为单个页面添加合适的ENDTEXT，保持原有偷看逻辑但避免重复"""
+        updated_lines = []
 
-        # 找到当前页面中最后一个ordered内容行（按页面中出现的顺序）
-        last_ordered_line_idx = None
-        for line_idx in reversed(page_lines):
+        for line_idx in page_lines:
+            updated_lines.append(line_idx)
+
+            # 如果是ordered行，检查是否需要"偷看"添加ENDTEXT
             if self.get_content_type(line_idx) == ContentType.ORDERED:
-                last_ordered_line_idx = line_idx
-                break
+                # 检查这个ordered行是否在当前页面是最后一次出现
+                is_last_occurrence = (
+                    line_idx in last_occurrence_pages
+                    and last_occurrence_pages[line_idx] == page_idx
+                )
 
-        if last_ordered_line_idx is None:
-            return page_lines
+                if is_last_occurrence:
+                    next_line_idx = line_idx + 1
+                    # 原有的"偷看"逻辑：如果下一行是ENDTEXT就添加
+                    if self.is_endtext_line(next_line_idx):
+                        updated_lines.append(next_line_idx)
 
-        # 检查这个ordered行是否在当前页面是最后一次出现（基于修正后的结果）
-        is_last_occurrence = (
-            last_ordered_line_idx in last_occurrence_pages
-            and last_occurrence_pages[last_ordered_line_idx] == page_idx
-        )
-
-        if is_last_occurrence:
-            next_line_idx = last_ordered_line_idx + 1
-            # 只有当下一行是ENDTEXT且当前页面没有ENDTEXT时才添加
-            if self.is_endtext_line(next_line_idx) and next_line_idx not in page_lines:
-                # 创建新的列表，添加ENDTEXT
-                return page_lines + [next_line_idx]
-
-        return page_lines
+        return updated_lines

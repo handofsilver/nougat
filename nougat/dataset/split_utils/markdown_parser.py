@@ -158,6 +158,8 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
         '算法1的标题': '[ALGORITHM]...[ENDALGORITHM]完整内容'
     }
     """
+    doc = re.sub(r'\n\n+', '\n', doc)
+
     text_to_obj = {}
 
     # 处理图片
@@ -168,7 +170,7 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
             r"\[FIGURE_TITLE\](.*?)\[ENDFIGURE_TITLE\]", match.group(1), re.DOTALL
         )
         if title_match:
-            title = title_match.group(1).strip()
+            title = title_match.group(0).strip()
             text_to_obj[title] = full_content
 
     # 处理表格
@@ -179,7 +181,7 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
             r"\[TABLE_TITLE\](.*?)\[ENDTABLE_TITLE\]", match.group(1), re.DOTALL
         )
         if title_match:
-            title = title_match.group(1).strip()
+            title = title_match.group(0).strip()
             text_to_obj[title] = full_content
 
     # 处理算法
@@ -190,7 +192,7 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
             r"\[ALGORITHM_TITLE\](.*?)\[ENDALGORITHM_TITLE\]", match.group(1), re.DOTALL
         )
         if title_match:
-            title = title_match.group(1).strip()
+            title = title_match.group(0).strip()
             text_to_obj[title] = full_content
 
     return text_to_obj

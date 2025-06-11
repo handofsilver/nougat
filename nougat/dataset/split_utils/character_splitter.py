@@ -1,186 +1,220 @@
 """
-字符级分割器
+字符级分页分割器
 
-分析重复行并提供字符级分割结果，供页面分割器使用。
+处理跨页重复行的字符级精确分割，基于行级分页结果进行细化
 """
 
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 from dataclasses import dataclass
+from collections import Counter
 
-from nougat.dataset.split_utils.duplicate_analyzer import filter_duplicate_indices
-from nougat.dataset.split_utils.region_analyzer import RegionAnalyzer
-from nougat.dataset.split_utils.boundary_matcher import BoundaryMatcher
-
-
-@dataclass
-class ContentSplit:
-    """内容分割信息"""
-
-    start_char: int  # 分割起始字符位置
-    end_char: int  # 分割结束字符位置
-    page_index: int  # 分配到的页面索引
-    content: str  # 分割的内容
-    region_id: int  # 对应的区域ID
+from nougat.dataset.split_utils.region_analyzer import get_doc_indices_to_regions
+from nougat.dataset.split_utils.boundary_matcher import RegionBoundaryMatcher
+from nougat.dataset.split_utils.page_splitter import PageResult
 
 
 @dataclass
-class IndexSplitResult:
-    """索引分割结果"""
+class CharacterSegment:
+    """字符级分割段"""
 
-    mmd_index: int  # MMD行索引
-    original_content: str  # 原始内容
-    total_splits: int  # 总分割数
-    splits: List[ContentSplit]  # 分割列表
+    start_pos: int
+    end_pos: int
+    page_index: int
+    content: str
 
 
-class CharacterSplitter:
-    """字符级分割器 - 专门负责分析重复行并提供片段内容"""
+@dataclass
+class SplitLine:
+    """分割后的行信息"""
 
-    def __init__(self, doc_lines_by_page: List[str], page_results: List):
+    original_line_index: int
+    original_content: str
+    segments: List[CharacterSegment]
+
+
+class CharacterPageSplitter:
+    """字符级分页分割器"""
+
+    def __init__(
+        self, doc_lines: List[str], doc_pages: List[PageResult], valid_index_mappings: List[List]
+    ):
         """
         初始化分割器
 
         Args:
-            doc_lines_by_page: MMD文档按行分割的内容
-            page_results: 页面结果列表（包含每页的行索引映射）
+            doc_lines: MMD文档所有行内容
         """
-        self.doc_lines_by_page = doc_lines_by_page
-        self.page_results = page_results
+        self.doc_lines = doc_lines
+        self.doc_pages = doc_pages
+        self.valid_index_mappings = valid_index_mappings
 
-        # 初始化两个分析器
-        self.region_analyzer = RegionAnalyzer(page_results)
-        self.boundary_matcher = BoundaryMatcher(doc_lines_by_page)
-
-    def split_duplicate_indices(self) -> List[IndexSplitResult]:
+    def filter_duplicate_indices(self) -> List[int]:
         """
-        对重复索引进行字符级分割
+        筛选出Line-Level分页结果中重复出现过的MMD索引(只可能是ordered类型)
+
+        Args:
+            doc_pages: page_splitter的输出结果
 
         Returns:
-            List[IndexSplitResult]: 每个重复索引的分割结果
+            List[int]: 重复索引列表
         """
-        # 步骤1：找到重复索引
-        duplicate_indices = filter_duplicate_indices(self.page_results)
+        index_counts = Counter()
+
+        for page_result in self.doc_pages:
+            for doc_line_index in page_result.doc_lines_by_page:
+                index_counts[doc_line_index] += 1
+
+        duplicate_indices = [idx for idx, count in index_counts.items() if count > 1]
+        duplicate_indices.sort()
+
+        return duplicate_indices
+
+    def refine_page_splits(self) -> Tuple[List, Dict[int, SplitLine]]:
+        """
+        对页面分割结果进行字符级细化
+
+        Returns:
+            Tuple[List, Dict[int, SplitLine]]:
+                - 细化后的页面结果
+                - 字符级分割的行信息字典
+        """
+        # 1. 找到重复索引
+        duplicate_indices = self.filter_duplicate_indices()
 
         if not duplicate_indices:
-            return []
+            return self.doc_pages, {}
 
-        # 步骤2：分析连续区域
-        region_results = self.region_analyzer.analyze_regions(duplicate_indices)
+        # 2. 分析连续区域
+        regions_dict = get_doc_indices_to_regions(self.valid_index_mappings, duplicate_indices)
 
-        # 步骤3：进行边界匹配
-        boundary_results = self.boundary_matcher.match_boundaries(region_results)
+        # 3. 进行边界匹配
+        boundary_matcher = RegionBoundaryMatcher(self.doc_lines)
+        boundary_results = boundary_matcher.find_boundaries(regions_dict)
 
-        # 步骤4：生成分割结果
-        split_results = []
-
+        # 4. 生成字符级分割结果
+        split_lines = {}
         for boundary_result in boundary_results:
-            split_result = self._generate_split_result(boundary_result, region_results)
-            if split_result:
-                split_results.append(split_result)
+            doc_line_index = boundary_result.doc_line_index
+            doc_line_content = self._get_doc_line_content(doc_line_index)
 
-        return split_results
+            if not doc_line_content:
+                continue
 
-    def _generate_split_result(self, boundary_result, region_results) -> Optional[IndexSplitResult]:
-        """根据边界匹配结果生成分割结果"""
-        mmd_index = boundary_result.index
-        original_content = self._get_line_content(mmd_index)
+            regions = regions_dict.get(doc_line_index, [])
+            if not regions:
+                continue
 
-        if not original_content:
-            return None
-
-        # 获取该索引的区域信息
-        region_result = region_results.get(mmd_index)
-        if not region_result:
-            return None
-
-        # 根据边界测试结果确定分割点
-        split_points = self._determine_split_points(boundary_result, original_content)
-
-        # 生成分割片段
-        splits = []
-        for i, (start_char, end_char, page_index, region_id) in enumerate(split_points):
-            content = original_content[start_char : end_char + 1] if end_char >= start_char else ""
-
-            splits.append(
-                ContentSplit(
-                    start_char=start_char,
-                    end_char=end_char,
-                    page_index=page_index,
-                    content=content,
-                    region_id=region_id,
-                )
+            # 根据边界信息直接生成分割段
+            segments = self._split_line_by_boundaries(
+                doc_line_content, boundary_result.boundaries, regions
             )
 
-        return IndexSplitResult(
-            mmd_index=mmd_index,
-            original_content=original_content,
-            total_splits=len(splits),
-            splits=splits,
-        )
+            if segments:
+                split_lines[doc_line_index] = SplitLine(
+                    original_line_index=doc_line_index,
+                    original_content=doc_line_content,
+                    segments=segments,
+                )
 
-    def _determine_split_points(
-        self, boundary_result, original_content: str
-    ) -> List[Tuple[int, int, int, int]]:
+        return self.doc_pages, split_lines
+
+    def _split_line_by_boundaries(
+        self, line_content: str, boundaries: List, regions: List
+    ) -> List[CharacterSegment]:
         """
-        根据边界测试结果确定分割点
+        根据边界信息分割行内容
 
-        Returns:
-            List[Tuple[start_char, end_char, page_index, region_id]]: 分割点列表
+        注意：regions是连续区域，同一页面内可能有多个regions
+        确保segments数量s和boundaries数量b满足关系：b = 2s - 2
         """
-        content_length = len(original_content)
-        split_points = []
+        if not boundaries or not regions:
+            # 没有边界，整行属于第一个区域
+            return [
+                CharacterSegment(
+                    start_pos=0,
+                    end_pos=len(line_content) - 1,
+                    page_index=regions[0].page_index,
+                    content=line_content,
+                )
+            ]
 
-        # 按边界位置排序
-        boundaries = []
-        for test in boundary_result.test_results:
-            if test.found:
-                boundaries.append((test.char_pos, test))
+        # 按boundary_type和位置排序边界
+        sorted_boundaries = sorted(boundaries, key=lambda b: (b.start_pos, b.boundary_type))
 
-        boundaries.sort()
-
-        # 生成分割点
+        # 构建分割点对：每对代表一个segment的起始和结束
+        segment_ranges = []
         current_start = 0
-        current_page = self._get_first_page_index(boundary_result)
-        current_region = 0
 
-        for char_pos, test in boundaries:
-            # 添加当前分割
-            if char_pos > current_start:
-                split_points.append((current_start, char_pos - 1, current_page, current_region))
+        i = 0
+        while i < len(sorted_boundaries):
+            if i + 1 < len(sorted_boundaries):
+                # 成对处理边界
+                boundary1 = sorted_boundaries[i]
+                boundary2 = sorted_boundaries[i + 1]
 
-            # 更新状态
-            current_start = char_pos
-            current_page = self._get_page_index_from_test(test)
-            current_region += 1
+                if boundary1.boundary_type == 'last' and boundary2.boundary_type == 'first':
+                    # region末尾 + region开头的配对
+                    segment_end = boundary1.end_pos
+                    next_segment_start = boundary2.start_pos
 
-        # 添加最后一个分割
-        if current_start < content_length:
-            end_char = content_length - 1
-            end_page = self._get_last_page_index(boundary_result)
-            split_points.append((current_start, end_char, end_page, current_region))
+                    # 添加当前segment
+                    if current_start <= segment_end:
+                        segment_ranges.append((current_start, segment_end))
 
-        return split_points
+                    # 检查是否有小片段需要处理
+                    if next_segment_start > segment_end + 1:
+                        # 有间隙，直接跳过（扔掉小片段）
+                        pass
 
-    def _get_first_page_index(self, boundary_result) -> int:
-        """获取第一个页面索引"""
-        if boundary_result.test_results:
-            return boundary_result.test_results[0].region.start_page
-        return 0
+                    current_start = next_segment_start
+                    i += 2
+                else:
+                    # 处理单个边界的情况
+                    i += 1
+            else:
+                # 最后一个边界
+                i += 1
 
-    def _get_page_index_from_test(self, test) -> int:
-        """从测试结果获取页面索引"""
-        if hasattr(test, 'region') and test.region:
-            return test.region.start_page
-        return 0
+        # 添加最后一个segment
+        if current_start < len(line_content):
+            segment_ranges.append((current_start, len(line_content) - 1))
 
-    def _get_last_page_index(self, boundary_result) -> int:
-        """获取最后一个页面索引"""
-        if boundary_result.test_results:
-            return boundary_result.test_results[-1].region.end_page
-        return 0
+        # 根据分割范围创建segments
+        segments = []
+        for i, (start, end) in enumerate(segment_ranges):
+            content = line_content[start : end + 1]
+            if content.strip():  # 只保留非空segments
+                # 确定对应的页面索引
+                page_idx = regions[i].page_index if i < len(regions) else regions[-1].page_index
 
-    def _get_line_content(self, mmd_index: int) -> str:
+                segments.append(
+                    CharacterSegment(
+                        start_pos=start, end_pos=end, page_index=page_idx, content=content
+                    )
+                )
+
+        return segments
+
+    def _get_doc_line_content(self, doc_line_index: int) -> str:
         """获取指定行的内容"""
-        if 0 <= mmd_index < len(self.doc_lines_by_page):
-            return self.doc_lines_by_page[mmd_index]
+        if 0 <= doc_line_index < len(self.doc_lines):
+            return self.doc_lines[doc_line_index]
         return ""
+
+
+def split_characters_in_pages(
+    doc_lines: List[str], doc_pages: List, valid_index_mappings: List[List]
+) -> Tuple[List, Dict[int, SplitLine]]:
+    """
+    对页面分割结果进行字符级分割的便捷函数
+
+    Args:
+        doc_lines: MMD文档所有行内容
+        doc_pages: 页面分割结果
+        valid_index_mappings: 有效索引映射
+
+    Returns:
+        Tuple[List, Dict[int, SplitLine]]: 细化后的页面结果和分割行信息
+    """
+    splitter = CharacterPageSplitter(doc_lines, doc_pages, valid_index_mappings)
+    return splitter.refine_page_splits()

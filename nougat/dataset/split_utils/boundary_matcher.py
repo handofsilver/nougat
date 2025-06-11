@@ -1,8 +1,7 @@
 """
-双向边界匹配器
+字符边界匹配器
 
-对重复索引的连续区域边界进行精确的字符级匹配，
-直接使用经过验证的get_char_match_score算法。
+对重复索引的连续区域边界进行精确的字符级匹配
 """
 
 import re
@@ -12,187 +11,134 @@ from nougat.dataset.split_utils.string_matcher import get_char_match_score
 
 
 @dataclass
-class BoundaryTest:
-    """边界测试结果"""
+class RegionBoundary:
+    """区域边界信息"""
 
-    boundary_type: str
     region_id: int
-    mapping_type: str
-    page_info: str
-    pdf_line: int
-    query_length: int
+    pdf_line_index: int
     match_score: float
     start_pos: int
     end_pos: int
     match_type: str
-    query_content: str
-    matched_content: str
-    match_length: Optional[int] = None
+    boundary_type: str  # "first" 或 "last"
 
 
 @dataclass
-class BoundaryMatchResult:
-    """边界匹配结果"""
+class LineBoundaries:
+    """行的所有边界匹配结果"""
 
-    index: int
-    mmd_content_length: int
-    total_regions: int
-    boundary_tests: List[BoundaryTest]
+    doc_line_index: int
+    boundaries: List[RegionBoundary]
 
 
-class BoundaryMatcher:
-    """双向边界匹配器"""
+class RegionBoundaryMatcher:
+    """区域边界匹配器"""
 
-    def __init__(self, doc_lines_by_page: List[str]):
+    def __init__(self, doc_lines: List[str]):
+        self.doc_lines = doc_lines
+
+    def find_boundaries(self, doc_indices_to_regions: Dict) -> List[LineBoundaries]:
         """
-        初始化匹配器
+        找到所有重复索引的区域边界
 
         Args:
-            doc_lines_by_page: MMD文档按行分割的内容
-        """
-        self.doc_lines_by_page = doc_lines_by_page
-        self.mmd_content = '\n'.join(doc_lines_by_page)
-
-    def match_boundaries(self, region_results: Dict) -> List[BoundaryMatchResult]:
-        """
-        对所有重复索引进行边界匹配
-
-        Args:
-            region_results: 区域分析结果
+            doc_indices_to_regions: 区域分析结果
 
         Returns:
-            List[BoundaryMatchResult]: 边界匹配结果列表
+            List[LineBoundaries]: 边界匹配结果列表
         """
         results = []
 
-        for mmd_index, region_result in region_results.items():
-            boundary_tests = self._match_index_boundaries(mmd_index, region_result)
+        for doc_line_index, regions in doc_indices_to_regions.items():
+            boundaries = []
 
-            match_result = BoundaryMatchResult(
-                index=mmd_index,
-                mmd_content_length=len(self._get_index_content(mmd_index)),
-                total_regions=len(region_result),
-                boundary_tests=boundary_tests,
-            )
-            results.append(match_result)
+            for i in range(len(regions) - 1):
+                current_region = regions[i]
+                next_region = regions[i + 1]
 
-        # 按索引排序
-        results.sort(key=lambda x: x.index)
+                # 测试当前区域的结束边界
+                end_boundary = self._match_boundary(
+                    doc_line_index, current_region.last_mapping, "last", i + 1
+                )
+                if end_boundary:
+                    boundaries.append(end_boundary)
+
+                # 测试下一个区域的开始边界
+                start_boundary = self._match_boundary(
+                    doc_line_index, next_region.first_mapping, "first", i + 2
+                )
+                if start_boundary:
+                    boundaries.append(start_boundary)
+
+            if boundaries:
+                results.append(LineBoundaries(doc_line_index, boundaries))
+
+        results.sort(key=lambda x: x.doc_line_index)
         return results
 
-    def _match_index_boundaries(self, mmd_index: int, region_result) -> List[BoundaryTest]:
-        """匹配单个索引的所有边界"""
-        boundary_tests = []
-
-        for i in range(len(region_result)):
-            region = region_result[i]
-
-            # 只测试有相邻下一个区域的边界
-            if i + 1 < len(region_result):
-                next_region = region_result[i + 1]
-
-                # 测试当前区域的最后一个映射
-                last_test = self._test_region_boundary(mmd_index, region, "last", i + 1)
-                if last_test:
-                    boundary_tests.append(last_test)
-
-                # 测试下一个区域的第一个映射
-                first_test = self._test_region_boundary(mmd_index, next_region, "first", i + 2)
-                if first_test:
-                    boundary_tests.append(first_test)
-
-        return boundary_tests
-
-    def _test_region_boundary(
-        self, mmd_index: int, region, boundary_type: str, region_id: int
-    ) -> Optional[BoundaryTest]:
-        """测试区域边界"""
-        if boundary_type == "last":
-            mapping = region.last_mapping
-            mapping_type = "last_mapping"
-            boundary_name = f"region{region_id}_last"
-            bidirectional_match = True
-            prefer_end = True
-        else:  # first
-            mapping = region.first_mapping
-            mapping_type = "first_mapping"
-            boundary_name = f"region{region_id}_first"
-            bidirectional_match = True
-            prefer_end = False
-
-            # 获取查询内容
-        query_content = self._clean_text(mapping.pdf_line_content)
-        if not query_content.strip():
+    def _match_boundary(
+        self, doc_line_index: int, mapping, boundary_type: str, region_id: int
+    ) -> Optional[RegionBoundary]:
+        """匹配单个边界"""
+        query = self._clean_pdf_text(mapping.pdf_line_content)
+        if not query.strip():
             return None
 
-        # 获取MMD内容
-        mmd_content = self._get_index_content(mmd_index)
+        content = self._get_doc_line_content(doc_line_index)
+        if not content:
+            return None
 
-        # 使用原有的get_char_match_score算法
+        # 选择匹配策略
         if boundary_type == "last":
-            # 对于last边界，使用双向匹配，优选end位置靠后的结果
+            # 对于region末尾，使用双向匹配，优选end位置靠后的结果
             match_result = get_char_match_score(
-                content=mmd_content.lower(),
-                query=query_content.lower(),
+                content=content.lower(),
+                query=query.lower(),
                 return_position=True,
                 bidirectional_match=True,
             )
 
             if isinstance(match_result, dict):
-                match_score = match_result['score']
+                score = match_result['score']
                 start_pos = match_result['start']
                 end_pos = match_result['end']
                 match_type = match_result['match_type']
-                match_length = match_result.get('match_length')
-                matched_content = (
-                    mmd_content[start_pos : end_pos + 1] if start_pos >= 0 and end_pos >= 0 else ""
-                )
             else:
                 return None
         else:
-            # 对于first边界，使用正向匹配
+            # 对于region开头，使用正向匹配
             match_result = get_char_match_score(
-                content=mmd_content.lower(),
-                query=query_content.lower(),
+                content=content.lower(),
+                query=query.lower(),
                 return_position=True,
                 bidirectional_match=False,
             )
 
             if isinstance(match_result, tuple) and len(match_result) >= 3:
-                match_score, start_pos, end_pos = match_result
+                score, start_pos, end_pos = match_result
                 match_type = "forward"
-                match_length = None
-                matched_content = (
-                    mmd_content[start_pos : end_pos + 1] if start_pos >= 0 and end_pos >= 0 else ""
-                )
             else:
                 return None
 
-        if match_score < 0.05:  # 最低匹配阈值
+        if score < 0.05:
             return None
 
-        return BoundaryTest(
-            boundary_type=boundary_name,
+        return RegionBoundary(
             region_id=region_id,
-            mapping_type=mapping_type,
-            page_info=f"page_{region.page_index}",
-            pdf_line=mapping.pdf_line_index,
-            query_length=len(query_content),
-            match_score=match_score,
+            pdf_line_index=mapping.pdf_line_index,
+            match_score=score,
             start_pos=start_pos,
             end_pos=end_pos,
             match_type=match_type,
-            query_content=query_content,
-            matched_content=matched_content,
-            match_length=match_length,
+            boundary_type=boundary_type,
         )
 
-    def _get_index_content(self, mmd_index: int) -> str:
+    def _get_doc_line_content(self, doc_line_index: int) -> str:
         """获取指定索引的MMD内容"""
-        if 0 <= mmd_index < len(self.doc_lines_by_page):
-            return self.doc_lines_by_page[mmd_index]
+        if 0 <= doc_line_index < len(self.doc_lines):
+            return self.doc_lines[doc_line_index]
         return ""
 
-    def _clean_text(self, text: str) -> str:
+    def _clean_pdf_text(self, text: str) -> str:
         """清理文本，移除多余空格"""
         return re.sub(r'\s+', ' ', text.strip())
