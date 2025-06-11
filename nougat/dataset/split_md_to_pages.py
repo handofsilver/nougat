@@ -46,7 +46,7 @@ def split_markdown(
 
     # 使用page_splitter进行行级分页
     page_splitter = PageSplitter(doc_lines, line_tag_map)
-    doc_pages = page_splitter.split_markdown_pages(detailed_mappings)
+    doc_pages, valid_index_mappings = page_splitter.split_markdown_pages(detailed_mappings)
 
     # TODO: 使用character_splitter进行字符级分割（处理重复行）
     # character_splitter = CharacterSplitter(doc_lines, doc_pages)
@@ -90,19 +90,11 @@ def split_markdown(
         page_text = "\n".join(page_content)
         doc_text_by_pages.append(page_text)
 
-        # 生成页面范围（简化处理）
-        if page_content:
-            start_line = page_result.doc_lines_by_page[0] if page_result.doc_lines_by_page else 0
-            end_line = page_result.doc_lines_by_page[-1] if page_result.doc_lines_by_page else 0
-            page_spans.append((start_line, end_line))
-        else:
-            page_spans.append((0, 0))
-
     # 简化处理：返回空的coincident_pages和bad_pages
     coincident_pages = []
     bad_pages = []
 
-    return doc_text_by_pages, page_spans, coincident_pages, bad_pages
+    return doc_text_by_pages, coincident_pages, bad_pages
 
 
 def _get_line_content(doc_lines: List[str], mmd_index: int) -> str:

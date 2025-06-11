@@ -71,7 +71,7 @@ class BoundaryMatcher:
             match_result = BoundaryMatchResult(
                 index=mmd_index,
                 mmd_content_length=len(self._get_index_content(mmd_index)),
-                total_regions=region_result.total_regions,
+                total_regions=len(region_result),
                 boundary_tests=boundary_tests,
             )
             results.append(match_result)
@@ -84,12 +84,12 @@ class BoundaryMatcher:
         """匹配单个索引的所有边界"""
         boundary_tests = []
 
-        for i in range(len(region_result.regions)):
-            region = region_result.regions[i]
+        for i in range(len(region_result)):
+            region = region_result[i]
 
             # 只测试有相邻下一个区域的边界
-            if i + 1 < len(region_result.regions):
-                next_region = region_result.regions[i + 1]
+            if i + 1 < len(region_result):
+                next_region = region_result[i + 1]
 
                 # 测试当前区域的最后一个映射
                 last_test = self._test_region_boundary(mmd_index, region, "last", i + 1)

@@ -21,6 +21,7 @@ class MatchResult:
     match_type: Optional[str] = None  # 'exact', 'inverted', 'rule'
     content_type: Optional[str] = None  # 'ordered', 'unordered'
     local_index: Optional[int] = None  # 在ordered或unordered中的局部索引
+    matched_content: Optional[str] = None  # 匹配的行内容
 
 
 @dataclass
@@ -41,6 +42,7 @@ class DualMatchResult:
     pdf_line_index: int
     pdf_line_content: str
     matched_doc_line_index: Optional[int] = None
+    matched_doc_line_content: Optional[str] = None
     match_score: Optional[float] = None
     match_type: Optional[str] = None
     content_type: Optional[str] = None  # 'ordered', 'unordered'
@@ -176,7 +178,7 @@ class MatchingRules:
     @staticmethod
     def is_too_short(strip_line: str) -> bool:
         """判断行是否太短"""
-        return len(strip_line) <= 4
+        return len(strip_line) <= 8
 
     @staticmethod
     def preprocess_abstract_line(strip_line: str) -> str:
@@ -323,6 +325,7 @@ class LineMatcher:
                         is_valid=True,
                         matched_index=content_line.line_index,
                         local_index=content_line.local_index,
+                        matched_content=content_line.content,
                         match_score=match_score,
                         match_type=match_type,
                         content_type=content_line.content_type,
@@ -477,7 +480,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
         unordered_lines: 无序内容行（ContentLine列表）
 
     Returns:
-        (valid_lines_of_pages, detailed_mappings): 有效行列表和详细映射信息
+        (valid_lines_of_pages, index_mappings): 有效行列表和详细映射信息
     """
     # 初始化匹配器（可以调整window_size参数）
     matcher = LineMatcher(ordered_lines, unordered_lines, window_size=20)
@@ -487,7 +490,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
 
     # 处理每一页
     valid_lines_of_pages = []
-    detailed_mappings = []
+    index_mappings = []
 
     current_ordered_pointer = 0
     for page_idx, page_lines in enumerate(raw_lines_of_pages):
@@ -509,6 +512,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
                 pdf_line_index=i,
                 pdf_line_content=pdf_line,
                 matched_doc_line_index=result.matched_index,
+                matched_doc_line_content=result.matched_content,
                 match_score=result.match_score,
                 match_type=result.match_type,
                 content_type=result.content_type,
@@ -524,7 +528,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
             context.last_line = strip_pdf_line
 
         valid_lines_of_pages.append(valid_lines)
-        detailed_mappings.append(page_mappings)
+        index_mappings.append(page_mappings)
 
         current_ordered_pointer = context.current_ordered_pointer
         # 为下一页保持ordered指针的连续性
@@ -532,7 +536,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
             f"📄 页面 {page_idx}: 处理了 {len(page_lines)} 行PDF，{len(valid_lines)} 行有效，ordered指针: {context.current_ordered_pointer}"
         )
 
-    return valid_lines_of_pages, detailed_mappings
+    return valid_lines_of_pages, index_mappings
 
 
 # ================================

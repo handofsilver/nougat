@@ -138,8 +138,8 @@ def process_paper(
             logger.info(f"Markdown saved to {mmd_file}")
 
         # 调用新的分页函数（返回格式：pages, coinside_pages, bad_pages）
-        doc_text_by_pages, page_spans, coinside_pages, bad_pages = split_markdown(
-            mmd_text, pdf=pdf, figure_info=figure_info  # 传入完整的figure_info字典
+        doc_text_by_pages, coinside_pages, bad_pages = split_markdown(
+            doc=mmd_text, pdf=pdf, figure_info=figure_info  # 传入完整的figure_info字典
         )
 
         # 保存分页结果

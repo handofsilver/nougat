@@ -7,7 +7,6 @@
 
 from typing import List, Dict, Optional
 from dataclasses import dataclass
-from collections import defaultdict
 
 
 @dataclass
@@ -33,15 +32,6 @@ class ContinuousRegion:
     last_mapping: RegionMapping
 
 
-@dataclass
-class RegionAnalysisResult:
-    """区域分析结果"""
-
-    mmd_index: int
-    regions: List[ContinuousRegion]
-    total_regions: int
-
-
 class RegionAnalyzer:
     """区域划分分析器"""
 
@@ -54,7 +44,7 @@ class RegionAnalyzer:
         """
         self.index_mappings = index_mappings
 
-    def analyze_regions(self, duplicate_indices: List[int]) -> Dict[int, RegionAnalysisResult]:
+    def analyze_regions(self, duplicate_indices: List[int]) -> Dict[int, List[ContinuousRegion]]:
         """
         分析重复索引的连续区域
 
@@ -62,29 +52,27 @@ class RegionAnalyzer:
             duplicate_indices: 重复出现的mmd索引列表
 
         Returns:
-            Dict[int, RegionAnalysisResult]: 每个索引的区域分析结果
+            Dict[int, List[ContinuousRegion]]: 每个索引的区域分析结果
         """
         results = {}
 
-        for mmd_index in duplicate_indices:
-            regions = self._analyze_single_index_regions(mmd_index)
-            results[mmd_index] = RegionAnalysisResult(
-                mmd_index=mmd_index, regions=regions, total_regions=len(regions)
-            )
+        for doc_line_index in duplicate_indices:
+            regions = self._analyze_single_index_regions(doc_line_index)
+            results[doc_line_index] = regions
 
         return results
 
-    def _analyze_single_index_regions(self, mmd_index: int) -> List[ContinuousRegion]:
+    def _analyze_single_index_regions(self, doc_line_index: int) -> List[ContinuousRegion]:
         """分析单个索引的连续区域"""
         # 收集该索引的所有映射
-        index_mappings = self._collect_index_mappings(mmd_index)
+        mappings_by_doc_index = self._collect_index_mappings(doc_line_index)
 
-        if not index_mappings:
+        if not mappings_by_doc_index:
             return []
 
         # 按页面和PDF行号排序
-        sorted_mappings = sorted(
-            index_mappings, key=lambda x: (x['page_index'], x['pdf_line_index'])
+        mappings_by_doc_index = sorted(
+            mappings_by_doc_index, key=lambda x: (x['page_index'], x['pdf_line_index'])
         )
 
         # 划分连续区域
@@ -93,13 +81,12 @@ class RegionAnalyzer:
         current_page = None
         last_pdf_line = None
 
-        for mapping in sorted_mappings:
-            page_idx = mapping['page_index']
-            pdf_line = mapping['pdf_line_index']
+        for mapping in mappings_by_doc_index:
+            page_index, pdf_line_index = mapping['page_index'], mapping['pdf_line_index']
 
             # 判断是否需要开始新区域
             should_start_new_region = self._should_start_new_region(
-                current_page, last_pdf_line, page_idx, pdf_line, current_region_mappings
+                current_page, last_pdf_line, page_index, pdf_line_index, current_region_mappings
             )
 
             if should_start_new_region:
@@ -114,8 +101,8 @@ class RegionAnalyzer:
                 # 继续当前区域
                 current_region_mappings.append(mapping)
 
-            current_page = page_idx
-            last_pdf_line = pdf_line
+            current_page = page_index
+            last_pdf_line = pdf_line_index
 
         # 保存最后一个区域
         if current_region_mappings:
@@ -124,16 +111,21 @@ class RegionAnalyzer:
 
         return regions
 
-    def _collect_index_mappings(self, mmd_index: int) -> List[Dict]:
+    def _collect_index_mappings(self, doc_line_index: int) -> List[Dict]:
         """收集指定索引的所有映射"""
         collected_mappings = []
 
-        for page_data in self.index_mappings:
-            page_idx = page_data['page_index']
-            for mapping in page_data['mappings']:
-                if mapping['matched_doc_line_index'] == mmd_index:
-                    mapping_with_page = mapping.copy()
-                    mapping_with_page['page_index'] = page_idx
+        for page_idx, page_mappings in enumerate(self.index_mappings):
+            for mapping in page_mappings:
+                if mapping.matched_doc_line_index == doc_line_index:
+                    mapping_with_page = {
+                        'page_index': page_idx,
+                        'pdf_line_index': mapping.pdf_line_index,
+                        'pdf_line_content': mapping.pdf_line_content,
+                        'match_score': mapping.match_score,
+                        'match_type': mapping.match_type,
+                    }
+
                     collected_mappings.append(mapping_with_page)
 
         return collected_mappings
@@ -170,12 +162,10 @@ class RegionAnalyzer:
 
     def _has_unordered_content_in_gap(self, page_idx: int, gap_start: int, gap_end: int) -> bool:
         """检查PDF行间隔中是否有unordered内容"""
-        page_data = self.index_mappings[page_idx]
-
-        for mapping in page_data['mappings']:
-            pdf_line = mapping['pdf_line_index']
+        for mapping in self.index_mappings[page_idx]:
+            pdf_line = mapping.pdf_line_index
             if gap_start <= pdf_line <= gap_end:
-                if mapping['content_type'] == 'unordered':
+                if mapping.content_type == 'unordered':
                     return True
 
         return False

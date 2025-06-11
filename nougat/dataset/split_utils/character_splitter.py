@@ -7,7 +7,7 @@
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
-from nougat.dataset.split_utils.duplicate_analyzer import DuplicateAnalyzer
+from nougat.dataset.split_utils.duplicate_analyzer import filter_duplicate_indices
 from nougat.dataset.split_utils.region_analyzer import RegionAnalyzer
 from nougat.dataset.split_utils.boundary_matcher import BoundaryMatcher
 
@@ -47,15 +47,9 @@ class CharacterSplitter:
         self.doc_lines_by_page = doc_lines_by_page
         self.page_results = page_results
 
-        # 初始化三个分析器
-        self.duplicate_analyzer = DuplicateAnalyzer(page_results)
+        # 初始化两个分析器
         self.region_analyzer = RegionAnalyzer(page_results)
         self.boundary_matcher = BoundaryMatcher(doc_lines_by_page)
-
-    def get_duplicate_indices(self) -> set:
-        """获取重复索引集合"""
-        duplicate_results = self.duplicate_analyzer.find_duplicates()
-        return set(duplicate_results)
 
     def split_duplicate_indices(self) -> List[IndexSplitResult]:
         """
@@ -65,7 +59,7 @@ class CharacterSplitter:
             List[IndexSplitResult]: 每个重复索引的分割结果
         """
         # 步骤1：找到重复索引
-        duplicate_indices = self.duplicate_analyzer.find_duplicates()
+        duplicate_indices = filter_duplicate_indices(self.page_results)
 
         if not duplicate_indices:
             return []
