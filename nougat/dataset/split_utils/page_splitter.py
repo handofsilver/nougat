@@ -60,12 +60,6 @@ class PageSplitter:
         """获取Markdown行的内容类型"""
         return self.content_types.get(doc_line_idx, ContentType.ORDERED)
 
-    def is_endtext_line(self, doc_line_idx: DocLineIndex) -> bool:
-        """检查是否为[END_TEXT]行"""
-        if doc_line_idx >= len(self.doc_lines):
-            return False
-        return self.doc_lines[doc_line_idx].strip() == '[END_TEXT]'
-
     def split_markdown_pages(self, index_mappings: List[List]) -> List[PageResult]:
         """
         执行分页
@@ -111,10 +105,7 @@ class PageSplitter:
 
             doc_pages.append(page_result)
             valid_index_mappings.append(valid_page_mappings)
-
-        # 后处理：基于修正后的分页结果统一处理ENDTEXT
-        doc_pages = self._post_process_all_endtext(doc_pages)
-
+            
         return doc_pages, valid_index_mappings
 
     def _build_matched_set(self, index_mappings: List[List]) -> Set[DocLineIndex]:
@@ -125,41 +116,6 @@ class PageSplitter:
                 if mapping.is_valid and mapping.matched_doc_line_index is not None:
                     matched_doc_lines_set.add(mapping.matched_doc_line_index)
         return matched_doc_lines_set
-
-    def _post_process_all_endtext(self, doc_pages: List[PageResult]) -> List[PageResult]:
-        """基于修正后的分页结果统一处理ENDTEXT"""
-        # 1. 先移除所有现有的ENDTEXT行，避免重复
-        cleaned_pages = []
-        for page_result in doc_pages:
-            cleaned_lines = [
-                line_idx
-                for line_idx in page_result.doc_lines_by_page
-                if not self.is_endtext_line(line_idx)
-            ]
-            cleaned_page = PageResult(
-                page_index=page_result.page_index, doc_lines_by_page=cleaned_lines
-            )
-            cleaned_pages.append(cleaned_page)
-
-        # 2. 基于清理后的结果计算每个ordered行的最后出现页面（排除ENDTEXT）
-        last_occurrence_pages = {}
-        for page_result in cleaned_pages:
-            for line_idx in page_result.doc_lines_by_page:
-                if self.get_content_type(line_idx) == ContentType.ORDERED:
-                    last_occurrence_pages[line_idx] = page_result.page_index
-
-        # 3. 为每个页面添加合适的ENDTEXT（保持原有的偷看逻辑）
-        updated_pages = []
-        for page_result in cleaned_pages:
-            updated_lines = self._add_endtext_for_page(
-                page_result.doc_lines_by_page, page_result.page_index, last_occurrence_pages
-            )
-            updated_page = PageResult(
-                page_index=page_result.page_index, doc_lines_by_page=updated_lines
-            )
-            updated_pages.append(updated_page)
-
-        return updated_pages
 
     def _process_single_page(
         self,
@@ -247,31 +203,3 @@ class PageSplitter:
         page_result = PageResult(page_index=pdf_page_idx, doc_lines_by_page=current_page_lines)
 
         return page_result, page_unordered_lines, last_ordered_in_page, valid_page_mappings
-
-    def _add_endtext_for_page(
-        self,
-        page_lines: List[DocLineIndex],
-        page_idx: int,
-        last_occurrence_pages: Dict[DocLineIndex, int],
-    ) -> List[DocLineIndex]:
-        """为单个页面添加合适的ENDTEXT，保持原有偷看逻辑但避免重复"""
-        updated_lines = []
-
-        for line_idx in page_lines:
-            updated_lines.append(line_idx)
-
-            # 如果是ordered行，检查是否需要"偷看"添加ENDTEXT
-            if self.get_content_type(line_idx) == ContentType.ORDERED:
-                # 检查这个ordered行是否在当前页面是最后一次出现
-                is_last_occurrence = (
-                    line_idx in last_occurrence_pages
-                    and last_occurrence_pages[line_idx] == page_idx
-                )
-
-                if is_last_occurrence:
-                    next_line_idx = line_idx + 1
-                    # 原有的"偷看"逻辑：如果下一行是ENDTEXT就添加
-                    if self.is_endtext_line(next_line_idx):
-                        updated_lines.append(next_line_idx)
-
-        return updated_lines

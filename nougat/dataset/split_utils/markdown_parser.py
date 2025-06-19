@@ -122,6 +122,10 @@ def flatten_nested_text_tag(doc: str) -> str:
     i = 0
     n = len(doc)
     last_pos = 0
+    
+    text_tag_length = len('[TEXT]')
+    end_text_tag_length = len('[END_TEXT]')
+    
     while i < n:
         if doc.startswith('[TEXT]', i):
             if not stack:
@@ -129,18 +133,18 @@ def flatten_nested_text_tag(doc: str) -> str:
                 result.append(doc[last_pos:i])
                 start_outer = i
             stack.append(i)
-            i += 6
+            i += text_tag_length
         elif doc.startswith('[END_TEXT]', i):
             if stack:
                 start = stack.pop()
                 if not stack:
                     # 这是最外层的[TEXT]...[END_TEXT]
-                    content = doc[start_outer + 6 : i]
+                    content = doc[start_outer + text_tag_length : i]
                     # 去掉内部所有[TEXT]和[END_TEXT]
                     content = re.sub(r'\[TEXT\]|\[END_TEXT\]', '', content)
                     result.append('[TEXT]' + content + '[END_TEXT]')
-                    last_pos = i + 9
-            i += 9
+                    last_pos = i + end_text_tag_length
+            i += end_text_tag_length
         else:
             i += 1
     # 添加最后一段内容
@@ -165,7 +169,7 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     # 处理图片
     figure_matches = re.finditer(r"\[FIGURE:.*?\](.*?)\[END_FIGURE\]", doc, re.DOTALL)
     for match in figure_matches:
-        full_content = match.group(0)
+        full_content = re.sub(r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)) # 新增：将[TAG:*]替换为[TAG]
         title_match = re.search(
             r"\[FIGURE_TITLE\](.*?)\[END_FIGURE_TITLE\]", match.group(1), re.DOTALL
         )
@@ -176,7 +180,7 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     # 处理表格
     table_matches = re.finditer(r"\[TABLE:.*?\](.*?)\[END_TABLE\]", doc, re.DOTALL)
     for match in table_matches:
-        full_content = match.group(0)
+        full_content = re.sub(r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)) # 新增：将[TAG:*]替换为[TAG]
         title_match = re.search(
             r"\[TABLE_TITLE\](.*?)\[END_TABLE_TITLE\]", match.group(1), re.DOTALL
         )
