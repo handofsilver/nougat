@@ -384,15 +384,15 @@ def parse_latexml_children(html: BeautifulSoup, parent: Element) -> None:
                 if isinstance(parent_elem, Table):
                     parent_elem.caption.append(TextElement(content="[TABLE_TITLE]"))
                     parse_latexml_children(child, parent_elem.caption)
-                    parent_elem.caption.append(TextElement(content="[ENDTABLE_TITLE]\n\n"))
+                    parent_elem.caption.append(TextElement(content="[END_TABLE_TITLE]\n\n"))
                 elif isinstance(parent_elem, Algorithm):
                     parent_elem.caption.append(TextElement(content="[ALGORITHM_TITLE]"))
                     parse_latexml_children(child, parent_elem.caption)
-                    parent_elem.caption.append(TextElement(content="[ENDALGORITHM_TITLE]\n\n"))
+                    parent_elem.caption.append(TextElement(content="[END_ALGORITHM_TITLE]\n\n"))
                 elif isinstance(parent_elem, Figure):
                     parent_elem.caption.append(TextElement(content="[FIGURE_TITLE]"))
                     parse_latexml_children(child, parent_elem.caption)
-                    parent_elem.caption.append(TextElement(content="[ENDFIGURE_TITLE]\n\n"))
+                    parent_elem.caption.append(TextElement(content="[END_FIGURE_TITLE]\n\n"))
             else:
                 # 如果找不到相应父元素,作为普通段落处理
                 para = parent.append(Paragraph())

@@ -61,10 +61,10 @@ class PageSplitter:
         return self.content_types.get(doc_line_idx, ContentType.ORDERED)
 
     def is_endtext_line(self, doc_line_idx: DocLineIndex) -> bool:
-        """检查是否为[ENDTEXT]行"""
+        """检查是否为[END_TEXT]行"""
         if doc_line_idx >= len(self.doc_lines):
             return False
-        return self.doc_lines[doc_line_idx].strip() == '[ENDTEXT]'
+        return self.doc_lines[doc_line_idx].strip() == '[END_TEXT]'
 
     def split_markdown_pages(self, index_mappings: List[List]) -> List[PageResult]:
         """

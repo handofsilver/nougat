@@ -9,7 +9,7 @@ def reorder_ieee_copyright(doc: str) -> str:
     查找包含'IEEE Copyright Notice'和'Personal use of this material is permitted.'的[TEXT]标签对，
     将其移动到文档最前面
     """
-    ieee_copyright_pattern = r'\[TEXT\](.*?)\[ENDTEXT\]'
+    ieee_copyright_pattern = r'\[TEXT\](.*?)\[END_TEXT\]'
     ieee_copyright_block = None
 
     # 查找包含IEEE版权信息的TEXT标签对
@@ -19,7 +19,7 @@ def reorder_ieee_copyright(doc: str) -> str:
             'IEEE Copyright Notice' in content
             and 'Personal use of this material is permitted' in content
         ):
-            ieee_copyright_block = match.group(0)  # 完整的[TEXT]...[ENDTEXT]块
+            ieee_copyright_block = match.group(0)  # 完整的[TEXT]...[END_TEXT]块
             break
 
     if ieee_copyright_block:
@@ -34,11 +34,11 @@ def reorder_ieee_copyright(doc: str) -> str:
 def preprocess_author_and_thank_note(doc: str) -> str:
     """
     预处理作者信息和致谢注释：
-    1. 如果[AUTHOR]中嵌套了[THANK_NOTE]，将其提取出来放到[ENDAUTHOR]后
+    1. 如果[AUTHOR]中嵌套了[THANK_NOTE]，将其提取出来放到[END_AUTHOR]后
     2. 压缩[AUTHOR]中的换行为一行
     3. 如果[AUTHOR]中没有[THANK_NOTE]，只做换行压缩
     """
-    author_pattern = r'\[AUTHOR\](.*?)\[ENDAUTHOR\]'
+    author_pattern = r'\[AUTHOR\](.*?)\[END_AUTHOR\]'
     author_match = re.search(author_pattern, doc, re.DOTALL)
 
     if not author_match:
@@ -47,7 +47,7 @@ def preprocess_author_and_thank_note(doc: str) -> str:
     author_full_content = author_match.group(1)
 
     # 检查AUTHOR中是否包含THANK_NOTE
-    thank_note_pattern = r'\[THANK_NOTE\].*?\[ENDTHANK_NOTE\]'
+    thank_note_pattern = r'\[THANK_NOTE\].*?\[END_THANK_NOTE\]'
     thank_note_match = re.search(thank_note_pattern, author_full_content, re.DOTALL)
 
     if thank_note_match:
@@ -63,7 +63,7 @@ def preprocess_author_and_thank_note(doc: str) -> str:
         )
 
         # 替换整个AUTHOR部分，将THANK_NOTE放到外面
-        replacement = f'[AUTHOR]{author_clean_content}[ENDAUTHOR]\n{thank_note_content}\n'
+        replacement = f'[AUTHOR]{author_clean_content}[END_AUTHOR]\n{thank_note_content}\n'
         doc = re.sub(author_pattern, replacement, doc, flags=re.DOTALL)
     else:
         # AUTHOR中没有THANK_NOTE，只压缩换行
@@ -72,7 +72,7 @@ def preprocess_author_and_thank_note(doc: str) -> str:
         )
 
         # 替换AUTHOR内容
-        replacement = f'[AUTHOR]{author_clean_content}[ENDAUTHOR]'
+        replacement = f'[AUTHOR]{author_clean_content}[END_AUTHOR]'
         doc = re.sub(author_pattern, replacement, doc, flags=re.DOTALL)
 
     return doc
@@ -115,7 +115,7 @@ def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int,
 
 def flatten_nested_text_tag(doc: str) -> str:
     """
-    只保留最外层的[TEXT]...[ENDTEXT]，去除内部所有嵌套的[TEXT]和[ENDTEXT]标签。
+    只保留最外层的[TEXT]...[END_TEXT]，去除内部所有嵌套的[TEXT]和[END_TEXT]标签。
     """
     result = []
     stack = []
@@ -130,15 +130,15 @@ def flatten_nested_text_tag(doc: str) -> str:
                 start_outer = i
             stack.append(i)
             i += 6
-        elif doc.startswith('[ENDTEXT]', i):
+        elif doc.startswith('[END_TEXT]', i):
             if stack:
                 start = stack.pop()
                 if not stack:
-                    # 这是最外层的[TEXT]...[ENDTEXT]
+                    # 这是最外层的[TEXT]...[END_TEXT]
                     content = doc[start_outer + 6 : i]
-                    # 去掉内部所有[TEXT]和[ENDTEXT]
-                    content = re.sub(r'\[TEXT\]|\[ENDTEXT\]', '', content)
-                    result.append('[TEXT]' + content + '[ENDTEXT]')
+                    # 去掉内部所有[TEXT]和[END_TEXT]
+                    content = re.sub(r'\[TEXT\]|\[END_TEXT\]', '', content)
+                    result.append('[TEXT]' + content + '[END_TEXT]')
                     last_pos = i + 9
             i += 9
         else:
@@ -153,9 +153,9 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     构建TFA标题内容到完整对象内容的映射
     例如：
     {
-        '图1的标题': '[FIGURE]...[ENDFIGURE]完整内容',
-        '表1的标题': '[TABLE]...[ENDTABLE]完整内容',
-        '算法1的标题': '[ALGORITHM]...[ENDALGORITHM]完整内容'
+        '图1的标题': '[FIGURE]...[END_FIGURE]完整内容',
+        '表1的标题': '[TABLE]...[END_TABLE]完整内容',
+        '算法1的标题': '[ALGORITHM]...[END_ALGORITHM]完整内容'
     }
     """
     doc = re.sub(r'\n\n+', '\n', doc)
@@ -163,33 +163,33 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     text_to_obj = {}
 
     # 处理图片
-    figure_matches = re.finditer(r"\[FIGURE:.*?\](.*?)\[ENDFIGURE\]", doc, re.DOTALL)
+    figure_matches = re.finditer(r"\[FIGURE:.*?\](.*?)\[END_FIGURE\]", doc, re.DOTALL)
     for match in figure_matches:
         full_content = match.group(0)
         title_match = re.search(
-            r"\[FIGURE_TITLE\](.*?)\[ENDFIGURE_TITLE\]", match.group(1), re.DOTALL
+            r"\[FIGURE_TITLE\](.*?)\[END_FIGURE_TITLE\]", match.group(1), re.DOTALL
         )
         if title_match:
             title = title_match.group(0).strip()
             text_to_obj[title] = full_content
 
     # 处理表格
-    table_matches = re.finditer(r"\[TABLE:.*?\](.*?)\[ENDTABLE\]", doc, re.DOTALL)
+    table_matches = re.finditer(r"\[TABLE:.*?\](.*?)\[END_TABLE\]", doc, re.DOTALL)
     for match in table_matches:
         full_content = match.group(0)
         title_match = re.search(
-            r"\[TABLE_TITLE\](.*?)\[ENDTABLE_TITLE\]", match.group(1), re.DOTALL
+            r"\[TABLE_TITLE\](.*?)\[END_TABLE_TITLE\]", match.group(1), re.DOTALL
         )
         if title_match:
             title = title_match.group(0).strip()
             text_to_obj[title] = full_content
 
     # 处理算法
-    algo_matches = re.finditer(r"\[ALGORITHM\](.*?)\[ENDALGORITHM\]", doc, re.DOTALL)
+    algo_matches = re.finditer(r"\[ALGORITHM\](.*?)\[END_ALGORITHM\]", doc, re.DOTALL)
     for match in algo_matches:
         full_content = match.group(0)
         title_match = re.search(
-            r"\[ALGORITHM_TITLE\](.*?)\[ENDALGORITHM_TITLE\]", match.group(1), re.DOTALL
+            r"\[ALGORITHM_TITLE\](.*?)\[END_ALGORITHM_TITLE\]", match.group(1), re.DOTALL
         )
         if title_match:
             title = title_match.group(0).strip()
@@ -201,9 +201,9 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
 def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
     """
     构建行号到标签类型的映射。每行只可能是以下三种情况之一：
-    1. 独立标签行：[TEXT]或[ENDTEXT]
-    2. 带标签的内容行：[TAG]内容[ENDTAG]
-    3. [TEXT]和[ENDTEXT]之间的正文行
+    1. 独立标签行：[TEXT]或[END_TEXT]
+    2. 带标签的内容行：[TAG]内容[END_TAG]
+    3. [TEXT]和[END_TEXT]之间的正文行
 
     Args:
         doc_lines: 已经预处理过的文档行列表（已去除空行和空格）
@@ -246,7 +246,7 @@ def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
                 'is_tag_line': True,
             }
             continue
-        elif line == '[ENDTEXT]':
+        elif line == '[END_TEXT]':
             in_text = False
             line_tag_map[line_num] = {
                 'type': 'TEXT',
@@ -257,7 +257,7 @@ def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
 
         # 处理其他标签行
         for tag, properties in tag_types.items():
-            if f'[{tag}' in line and f'[END{tag}]' in line:
+            if f'[{tag}' in line and f'[END_{tag}]' in line:
                 line_tag_map[line_num] = {
                     'type': tag,
                     'content_type': properties['content_type'],
@@ -287,17 +287,17 @@ def replace_tfa_with_titles(doc: str) -> str:
         str: 替换后的文档内容
     """
     doc = re.sub(
-        r"\[(FIGURE:.*?|TABLE:.*?|ALGORITHM)\](.*?)\[END(FIGURE|TABLE|ALGORITHM)\]",
+        r"\[(FIGURE:.*?|TABLE:.*?|ALGORITHM)\](.*?)\[END_(FIGURE|TABLE|ALGORITHM)\]",
         lambda m: (
             re.search(
-                r"\[(FIGURE|TABLE|ALGORITHM)_TITLE\](.*?)\[END(FIGURE|TABLE|ALGORITHM)_TITLE\]",
+                r"\[(FIGURE|TABLE|ALGORITHM)_TITLE\](.*?)\[END_(FIGURE|TABLE|ALGORITHM)_TITLE\]",
                 m.group(2),
                 re.DOTALL,
             )
             .group(0)
             .strip()
             if re.search(
-                r"\[(FIGURE|TABLE|ALGORITHM)_TITLE\](.*?)\[END(FIGURE|TABLE|ALGORITHM)_TITLE\]",
+                r"\[(FIGURE|TABLE|ALGORITHM)_TITLE\](.*?)\[END_(FIGURE|TABLE|ALGORITHM)_TITLE\]",
                 m.group(2),
                 re.DOTALL,
             )

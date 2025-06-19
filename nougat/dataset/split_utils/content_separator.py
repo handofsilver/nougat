@@ -13,7 +13,7 @@ class ContentLine:
     tag_type: str  # 标签类型，如'TEXT', 'FIGURE_TITLE'等
     content_type: str  # 内容类型，如'ordered', 'unordered'
     content: str  # 行的文本内容
-    is_tag_line: bool = False  # 是否是独立的标签行（如[TEXT]、[ENDTEXT]）
+    is_tag_line: bool = False  # 是否是独立的标签行（如[TEXT]、[END_TEXT]）
 
     def replace_content(self, content: str):
         return ContentLine(
@@ -104,16 +104,16 @@ def get_lowercase_text_for_matching(content_line: ContentLine) -> str:
 
     # 定义标签清理规则
     tag_patterns = {
-        # 标准标签格式：[TAG]content[ENDTAG]
-        'TITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
-        'AUTHOR': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
-        'SUBTITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
-        'FORMULA': r'\[FORMULA\](.*?)\[ENDFORMULA\]',
-        'FIGURE_TITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
-        'TABLE_TITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
-        'ALGORITHM_TITLE': rf'\[{tag_type}\](.*?)\[END{tag_type}\]',
-        'THANK_NOTE': r'\[THANK_NOTE\](.*?)\[ENDTHANK_NOTE\]',
-        'FOOTNOTE': r'\[FOOTNOTE:.*?\](.*?)\[ENDFOOTNOTE\]',
+        # 标准标签格式：[TAG]content[END_TAG]
+        'TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
+        'AUTHOR': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
+        'SUBTITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
+        'FORMULA': r'\[FORMULA\](.*?)\[END_FORMULA\]',
+        'FIGURE_TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
+        'TABLE_TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
+        'ALGORITHM_TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
+        'THANK_NOTE': r'\[THANK_NOTE\](.*?)\[END_THANK_NOTE\]',
+        'FOOTNOTE': r'\[FOOTNOTE:.*?\](.*?)\[END_FOOTNOTE\]',
     }
 
     # 获取对应的正则模式

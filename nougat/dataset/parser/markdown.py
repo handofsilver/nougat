@@ -14,7 +14,7 @@ from unidecode import unidecode
 
 SUPERSCRIPT_MAP = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
 SUBSCRIPT_MAP = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-figure_regex = re.compile(r"\[(FOOTNOTE|FIGURE|TABLE)(.*?)\](.*?)\[END\1\]", re.S)
+figure_regex = re.compile(r"\[(FOOTNOTE|FIGURE|TABLE)(.*?)\](.*?)\[END_\1\]", re.S)
 conv = {
     "&": r"\&",
     "%": r"\%",
@@ -125,7 +125,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
         return format_children(element, keep_refs) + ["\n"]
     if isinstance(element, Paragraph):
         children_parts = format_children(element, keep_refs, latex_env)
-        return ["\n[TEXT]\n" + "".join(children_parts) + "\n[ENDTEXT]\n"]
+        return ["\n[TEXT]\n" + "".join(children_parts) + "\n[END_TEXT]\n"]
     if isinstance(element, TableCell):
         parts = format_children(element, keep_refs, latex_env)
         remove_trailing_whitespace(parts)
@@ -162,7 +162,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
         parts.append("\\end{table}\n")
         if len(caption_parts) > 0:
             parts.extend(caption_parts + ["\n"])
-        parts.append("[ENDTABLE]\n\n")
+        parts.append("[END_TABLE]\n\n")
         return parts
 
     # 修改Figure处理部分
@@ -178,7 +178,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
         content_parts = format_children(element, keep_refs)
         parts.extend(content_parts)
 
-        parts.append("[ENDFIGURE]\n\n")
+        parts.append("[END_FIGURE]\n\n")
         return parts
 
     if isinstance(element, SectionHeader):
@@ -191,7 +191,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
             header = format_iterator(element.children, keep_refs)
         _, title, _ = leading_trailing_whitespace("".join(header))
         parts.append(title)
-        return ["[TITLE]" + "".join(parts) + "[ENDTITLE]\n\n"]
+        return ["[TITLE]" + "".join(parts) + "[END_TITLE]\n\n"]
     if isinstance(element, Section):
         children_parts = format_children(element, keep_refs)
         if is_empty(children_parts):
@@ -202,13 +202,13 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
                 "".join(format_element(element.header, keep_refs))
             )
             parts.append(title)
-            parts.append("[ENDSUBTITLE]\n")
+            parts.append("[END_SUBTITLE]\n")
         else:
             parts = []
-        return ["\n[TEXT]\n" + "".join(parts + children_parts) + "\n[ENDTEXT]\n"]
+        return ["\n[TEXT]\n" + "".join(parts + children_parts) + "\n[END_TEXT]\n"]
     if isinstance(element, Footnote):
         foot = f"\n[FOOTNOTE:{element.id}]{element.id}"
-        return [foot] + format_children(element, keep_refs) + ["[ENDFOOTNOTE]\n\n"]
+        return [foot] + format_children(element, keep_refs) + ["[END_FOOTNOTE]\n\n"]
     if isinstance(element, ListContainer):
         items = [
             (item.label, "".join(format_element(item, keep_refs)).strip().replace("\n", " "))
@@ -239,7 +239,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
                     parts.append(text)
         lead, eqs, tail = leading_trailing_whitespace(parts)
         s = " ".join(eqs).replace(r"\] \[", " ")
-        return ["[FORMULA]" + "".join([*lead, s, *tail]) + "[ENDFORMULA]\n\n"]
+        return ["[FORMULA]" + "".join([*lead, s, *tail]) + "[END_FORMULA]\n\n"]
     if isinstance(element, EquationList):
         parts = ["\n"]
         items = element.equations
@@ -270,7 +270,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
             parts.extend(items)
             append = "`" if element.inline else "```\n"
             parts.append(append)
-        return ["[ALGORITHM]\n" + caption + "".join(parts) + "[ENDALGORITHM]\n\n"]
+        return ["[ALGORITHM]\n" + caption + "".join(parts) + "[END_ALGORITHM]\n\n"]
 
     if isinstance(element, DefinitionList):
         parts = ["\n"]
@@ -317,11 +317,11 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
 
     if isinstance(element, AuthorNote):
         parts = format_children(element, keep_refs)
-        return "\n[THANK_NOTE]" + "".join(parts) + "[ENDTHANK_NOTE]"
+        return "\n[THANK_NOTE]" + "".join(parts) + "[END_THANK_NOTE]"
 
     if isinstance(element, AuthorList):
         parts = format_children(element, keep_refs)
-        return "[AUTHOR]\n" + "".join(parts) + "\n[ENDAUTHOR]\n\n"
+        return "[AUTHOR]\n" + "".join(parts) + "\n[END_AUTHOR]\n\n"
 
     if isinstance(element, Author):
         parts = format_children(element, keep_refs)
@@ -395,32 +395,27 @@ def format_document(doc: Document, keep_refs: bool = False) -> Tuple[str, Dict[s
 
     # 清理表格标题标签
     text = re.sub(r"\[TABLE_TITLE\]\s+", "[TABLE_TITLE]", text)
-    text = re.sub(r"\s+\[ENDTABLE_TITLE\]", "[ENDTABLE_TITLE]", text)
-    text = re.sub(r"\[ENDTABLE_TITLE\]([a-zA-Z])", r"[ENDTABLE_TITLE]\n\1", text)
+    text = re.sub(r"\s+\[END_TABLE_TITLE\]", "[END_TABLE_TITLE]", text)
+    text = re.sub(r"\[END_TABLE_TITLE\]([a-zA-Z])", r"[END_TABLE_TITLE]\n\1", text)
 
     # 确保表格标题和内容之间有适的换行
-    text = re.sub(r"\[ENDTABLE_TITLE\]\n*", "[ENDTABLE_TITLE]\n", text)
+    text = re.sub(r"\[END_TABLE_TITLE\]\n*", "[END_TABLE_TITLE]\n", text)
 
     # 清理图片标题标签
     text = re.sub(r"\[FIGURE_TITLE\]\s+", "[FIGURE_TITLE]", text)
-    text = re.sub(r"\s+\[ENDFIGURE_TITLE\]", "[ENDFIGURE_TITLE]", text)
-    text = re.sub(r"\[ENDFIGURE_TITLE\]([a-zA-Z])", r"[ENDFIGURE_TITLE]\n\1", text)
+    text = re.sub(r"\s+\[END_FIGURE_TITLE\]", "[END_FIGURE_TITLE]", text)
+    text = re.sub(r"\[END_FIGURE_TITLE\]([a-zA-Z])", r"[END_FIGURE_TITLE]\n\1", text)
 
     # 确保图片标题和内容之间有适当的换行
-    text = re.sub(r"\[ENDFIGURE_TITLE\]\n*", "[ENDFIGURE_TITLE]\n", text)
+    text = re.sub(r"\[END_FIGURE_TITLE\]\n*", "[END_FIGURE_TITLE]\n", text)
 
     # 清理算法标题标签
     text = re.sub(r"\[ALGORITHM_TITLE\]\s+", "[ALGORITHM_TITLE]", text)
-    text = re.sub(r"\s+\[ENDALGORITHM_TITLE\]", "[ENDALGORITHM_TITLE]", text)
-    text = re.sub(r"\[ENDALGORITHM_TITLE\]([a-zA-Z])", r"[ENDALGORITHM_TITLE]\n\1", text)
+    text = re.sub(r"\s+\[END_ALGORITHM_TITLE\]", "[END_ALGORITHM_TITLE]", text)
+    text = re.sub(r"\[END_ALGORITHM_TITLE\]([a-zA-Z])", r"[END_ALGORITHM_TITLE]\n\1", text)
 
     # 确保算法标题和内容之间有适当的换行
-    text = re.sub(r"\[ENDALGORITHM_TITLE\]\n*", "[ENDALGORITHM_TITLE]\n", text)
+    text = re.sub(r"\[END_ALGORITHM_TITLE\]\n*", "[END_ALGORITHM_TITLE]\n", text)
     figures = {unidecode(m[0] + m[1]): m[2].strip() for m in figure_regex.findall(text)}
-
-    # text = figure_regex.sub(
-    #     r"[\1\2][END\1]",
-    #     text,
-    # )
 
     return text, figures

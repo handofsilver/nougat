@@ -45,8 +45,8 @@ def inject_coordinates(
 
     # 提取所有FIGURE标签
     pattern = re.compile(
-        r"\[FIGURE:(.*?)\.F(.*?)\](.*?)\[ENDFIGURE\]", re.S
-    )  # [FIGURE:S3.F1]... [ENDFIGURE]
+        r"\[FIGURE:(.*?)\.F(.*?)\](.*?)\[END_FIGURE\]", re.S
+    )  # [FIGURE:S3.F1]... [END_FIGURE]
     matches = pattern.findall(mmd_text)
     figure_map = {m[1]: m[2] for m in matches}
     # print(f"figure_map: {figure_map}")
@@ -75,7 +75,7 @@ def inject_coordinates(
             [coords["x1"], coords["y1"], coords["x2"], coords["y2"]], page_width, page_height
         )
 
-        coords_str = f"[FIGURE_COORDS](x1={normalized_coords[0]}, y1={normalized_coords[1]}, x2={normalized_coords[2]}, y2={normalized_coords[3]})[ENDFIGURE_COORDS]"
+        coords_str = f"[FIGURE_COORDS](x1={normalized_coords[0]}, y1={normalized_coords[1]}, x2={normalized_coords[2]}, y2={normalized_coords[3]})[END_FIGURE_COORDS]"
 
         # 判断标题在图片上方还是下方
         if is_caption_below(caption_boundary, coords):
@@ -91,7 +91,7 @@ def inject_coordinates(
 
     # 替换原始文本中的[FIGURE:xxx]标签
     result = pattern.sub(
-        lambda m: f"[FIGURE:{m.group(1)}.F{m.group(2)}]{figure_map[m.group(2)]}[ENDFIGURE]",
+        lambda m: f"[FIGURE:{m.group(1)}.F{m.group(2)}]{figure_map[m.group(2)]}[END_FIGURE]",
         mmd_text,
     )
 

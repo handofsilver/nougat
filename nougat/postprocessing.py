@@ -382,7 +382,7 @@ def postprocess_single(generation: str, markdown_fix: bool = True) -> str:
         generation,
     )
     # TODO Come up with footnote formatting inside a table
-    generation = re.sub(r"\[FOOTNOTE:.+?\](.*?)\[ENDFOOTNOTE\]", "", generation)
+    generation = re.sub(r"\[FOOTNOTE:.+?\](.*?)\[END_FOOTNOTE\]", "", generation)
     # itemize post processing
     for match in reversed(
         list(

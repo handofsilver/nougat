@@ -49,7 +49,7 @@ def remove_invalid_figures(mmd_text: str, page_idx: int, figure_map: dict) -> st
     figure_map: {page_num(1-based): set-of-names}
                 e.g. {5:{'1','2'},6:{'16'},...}
     """
-    pattern = re.compile(r"\[FIGURE:(.*?)\](.*?)\[ENDFIGURE\]", re.S)
+    pattern = re.compile(r"\[FIGURE:(.*?)\](.*?)\[END_FIGURE\]", re.S)
 
     valid_names = figure_map.get(page_idx + 1, set())
 
