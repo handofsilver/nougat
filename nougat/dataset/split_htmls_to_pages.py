@@ -129,20 +129,20 @@ def process_paper(
             page_width=pdf.pages[0].mediabox.width,
             page_height=pdf.pages[0].mediabox.height,
         )
-        # 调用新的分页函数（返回格式：pages, coinside_pages, bad_pages）
-        doc_text_by_pages, coinside_pages, bad_pages = split_markdown(
+        # 调用新的分页函数（返回格式：pages, bad_page_indices）
+        doc_text_by_pages, bad_page_indices = split_markdown(
             doc=mmd_text, pdf=pdf, figure_info=figure_info  # 传入完整的figure_info字典
         )
-        
+
         # 保存原始的markdown文本（可选）
         if args.markdown:
             mmd_file = args.markdown / f"{fname}.mmd"
             with open(mmd_file, "w", encoding="utf-8") as f:
                 f.write(mmd_text)
             logger.info(f"Markdown saved to {mmd_file}")
-            
+
             processed_doc_text = "\n".join(doc_text_by_pages)
-            
+
             mmd_file_processed = args.markdown / f"{fname}_processed.mmd"
             with open(mmd_file_processed, "w", encoding="utf-8") as f:
                 f.write(processed_doc_text)
@@ -152,7 +152,7 @@ def process_paper(
         os.makedirs(outpath, exist_ok=True)
         recognized_indices = []
         for i, content in enumerate(doc_text_by_pages):
-            if content.strip():
+            if content.strip() and i not in bad_page_indices:
                 # 保存为页码命名的文件 (01.mmd, 02.mmd...)
                 # content = remove_invalid_figures(content, i, figure_info)
                 with open(outpath / f"{i+1:02d}.mmd", "w", encoding="utf-8") as f:

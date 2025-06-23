@@ -104,6 +104,7 @@ def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int,
     doc = replace_tfa_with_titles(doc)
 
     # 6. 获取文档行
+    doc = re.sub(r'\[TEXT\]|\[END_TEXT\]', '', doc)
     doc_lines = doc.split("\n")
     doc_lines = [line.strip() for line in doc_lines if line.strip()]
 
@@ -122,10 +123,10 @@ def flatten_nested_text_tag(doc: str) -> str:
     i = 0
     n = len(doc)
     last_pos = 0
-    
+
     text_tag_length = len('[TEXT]')
     end_text_tag_length = len('[END_TEXT]')
-    
+
     while i < n:
         if doc.startswith('[TEXT]', i):
             if not stack:
@@ -169,7 +170,9 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     # 处理图片
     figure_matches = re.finditer(r"\[FIGURE:.*?\](.*?)\[END_FIGURE\]", doc, re.DOTALL)
     for match in figure_matches:
-        full_content = re.sub(r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)) # 新增：将[TAG:*]替换为[TAG]
+        full_content = re.sub(
+            r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)
+        )  # 新增：将[TAG:*]替换为[TAG]
         title_match = re.search(
             r"\[FIGURE_TITLE\](.*?)\[END_FIGURE_TITLE\]", match.group(1), re.DOTALL
         )
@@ -180,7 +183,9 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     # 处理表格
     table_matches = re.finditer(r"\[TABLE:.*?\](.*?)\[END_TABLE\]", doc, re.DOTALL)
     for match in table_matches:
-        full_content = re.sub(r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)) # 新增：将[TAG:*]替换为[TAG]
+        full_content = re.sub(
+            r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)
+        )  # 新增：将[TAG:*]替换为[TAG]
         title_match = re.search(
             r"\[TABLE_TITLE\](.*?)\[END_TABLE_TITLE\]", match.group(1), re.DOTALL
         )
@@ -205,24 +210,21 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
 def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
     """
     构建行号到标签类型的映射。每行只可能是以下三种情况之一：
-    1. 独立标签行：[TEXT]或[END_TEXT]
-    2. 带标签的内容行：[TAG]内容[END_TAG]
-    3. [TEXT]和[END_TEXT]之间的正文行
+    1. 带标签的内容行：[TAG]内容[END_TAG]
+    2. [TEXT]和[END_TEXT]之间的正文行
 
     Args:
-        doc_lines: 已经预处理过的文档行列表（已去除空行和空格）
+        doc_lines: 已经预处理过的文档行列表（已去除空行和[TEXT]、[END_TEXT]）
 
     Returns:
         Dict[int, Dict]: {
             行号: {
                 'type': 标签类型,
-                'content_type': 'ordered'|'unordered',
-                'is_tag_line': bool  # 只有[TEXT]的开始结束标签会被标记为True
+                'content_type': 'ordered'|'unordered'
             }
         }
     """
     line_tag_map = {}
-    in_text = False
 
     # 定义标签类型和它们的属性
     tag_types = {
@@ -241,41 +243,15 @@ def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
     for line_num, line in enumerate(doc_lines):
         line = line.strip()
 
-        # 处理[TEXT]标签
-        if line == '[TEXT]':
-            in_text = True
-            line_tag_map[line_num] = {
-                'type': 'TEXT',
-                'content_type': 'ordered',
-                'is_tag_line': True,
-            }
-            continue
-        elif line == '[END_TEXT]':
-            in_text = False
-            line_tag_map[line_num] = {
-                'type': 'TEXT',
-                'content_type': 'ordered',
-                'is_tag_line': True,
-            }
-            continue
-
         # 处理其他标签行
         for tag, properties in tag_types.items():
-            if f'[{tag}' in line and f'[END_{tag}]' in line:
-                line_tag_map[line_num] = {
-                    'type': tag,
-                    'content_type': properties['content_type'],
-                    'is_tag_line': False,
-                }
+            if line.startswith(f'[{tag}') and line.endswith(f'[END_{tag}]'):
+                line_tag_map[line_num] = {'type': tag, 'content_type': properties['content_type']}
                 break
 
-        # 如果在[TEXT]标签内且不是其他标签行，则为正文行
-        if in_text and line_num not in line_tag_map:
-            line_tag_map[line_num] = {
-                'type': 'TEXT',
-                'content_type': 'ordered',
-                'is_tag_line': False,
-            }
+        # 如果该行不是其他标签行，则为正文行
+        if line_num not in line_tag_map:
+            line_tag_map[line_num] = {'type': 'TEXT', 'content_type': 'ordered'}
 
     return line_tag_map
 
@@ -312,22 +288,3 @@ def replace_tfa_with_titles(doc: str) -> str:
     )
 
     return doc
-
-
-if __name__ == "__main__":
-    test_mmd = "/home/ninziwei/lyj/nougat/__test_0/markdown/2303.00058.mmd"
-    output_mmd = "/home/ninziwei/lyj/nougat/__test_0/markdown/2303.00058_processed.mmd"
-
-    with open(test_mmd, "r", encoding="utf-8") as f:
-        mmd_text = f.read()
-
-    doc_lines, text_obj_map, line_tag_map = parse_markdown_lines(mmd_text)
-
-    with open("text_obj_map.json", "w", encoding="utf-8") as f:
-        json.dump(text_obj_map, f, ensure_ascii=False, indent=4)
-
-    with open("line_tag_map.json", "w", encoding="utf-8") as f:
-        json.dump(line_tag_map, f, ensure_ascii=False, indent=4)
-
-    with open(output_mmd, "w", encoding="utf-8") as f:
-        f.write("\n".join(doc_lines))

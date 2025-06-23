@@ -114,13 +114,13 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
         if element.find_parent(Algorithm) is not None:
             return parts
         lead, text, tail = leading_trailing_whitespace("".join(parts))
-        return [*lead, "**", *remove_line_breaks(text), "**", *tail]
+        return [*lead, "[BOLD_TEMP]", *remove_line_breaks(text), "[END_BOLD_TEMP]", *tail]
     if isinstance(element, Italic):
         parts = format_children(element, keep_refs, latex_env)
         if element.find_parent(Algorithm) is not None:
             return parts
         lead, text, tail = leading_trailing_whitespace("".join(parts))
-        return [*lead, "_", *remove_line_breaks(text), "_", *tail]
+        return [*lead, "[ITALIC_TEMP]", *remove_line_breaks(text), "[END_ITALIC_TEMP]", *tail]
     if isinstance(element, PlaintextMath):
         return format_children(element, keep_refs) + ["\n"]
     if isinstance(element, Paragraph):
@@ -220,7 +220,8 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
             if label:
                 bullet = label
             else:
-                bullet = f"{i}." if element.ordered else "*"
+                # bullet = f"{i}." if element.ordered else "*"
+                bullet = f"" if element.ordered else "*"
             parts.append(f"{indent}{bullet} {item}\n")
         parts.append("\n")
         return parts
@@ -249,7 +250,7 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
             parts.extend(items)
             parts.append("\n")
         # return ["[FORMULA_LIST]" + "".join(parts) + "[ENDFORMULA_LIST]\n\n"]
-        return "".join(parts) + "\n\n"
+        return ["".join(parts) + "\n\n"]
 
     if isinstance(element, Algorithm):
         parts = []
@@ -317,11 +318,11 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
 
     if isinstance(element, AuthorNote):
         parts = format_children(element, keep_refs)
-        return "\n[THANK_NOTE]" + "".join(parts) + "[END_THANK_NOTE]"
+        return ["\n[THANK_NOTE]" + "".join(parts) + "[END_THANK_NOTE]"]
 
     if isinstance(element, AuthorList):
         parts = format_children(element, keep_refs)
-        return "[AUTHOR]\n" + "".join(parts) + "\n[END_AUTHOR]\n\n"
+        return ["[AUTHOR]\n" + "".join(parts) + "\n[END_AUTHOR]\n\n"]
 
     if isinstance(element, Author):
         parts = format_children(element, keep_refs)

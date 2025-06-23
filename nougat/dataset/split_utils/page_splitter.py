@@ -31,6 +31,7 @@ class PageResult:
 
     page_index: int
     doc_lines_by_page: List[DocLineIndex]
+    is_valid: bool = True
 
 
 class PageSplitter:
@@ -81,6 +82,8 @@ class PageSplitter:
 
         # 遍历每个PDF页
         for pdf_page_idx, page_mappings in enumerate(index_mappings):
+            last_page_result = doc_pages[-1] if doc_pages else None
+
             page_result, page_unordered_lines, ordered_pointer, valid_page_mappings = (
                 self._process_single_page(
                     pdf_page_idx=pdf_page_idx,
@@ -89,6 +92,7 @@ class PageSplitter:
                     processed_ordered_set=processed_ordered_set,
                     processed_unordered_set=processed_unordered_set,
                     current_ordered_pointer=current_ordered_pointer,
+                    last_page_result=last_page_result,
                 )
             )
 
@@ -105,7 +109,7 @@ class PageSplitter:
 
             doc_pages.append(page_result)
             valid_index_mappings.append(valid_page_mappings)
-            
+
         return doc_pages, valid_index_mappings
 
     def _build_matched_set(self, index_mappings: List[List]) -> Set[DocLineIndex]:
@@ -125,6 +129,7 @@ class PageSplitter:
         processed_ordered_set: Set[DocLineIndex],
         processed_unordered_set: Set[DocLineIndex],
         current_ordered_pointer: int,
+        last_page_result: PageResult,
     ) -> PageResult:
         """处理单个PDF页 - 按映射顺序去重连续重复"""
 
@@ -138,68 +143,99 @@ class PageSplitter:
         last_doc_line_idx = None
         valid_page_mappings = []
 
-        for mapping in page_mappings:
-            if mapping.is_valid and mapping.matched_doc_line_index is not None:
-                doc_line_idx = mapping.matched_doc_line_index
-                # 避免连续重复添加相同行
-                if last_doc_line_idx == doc_line_idx:
-                    if (
-                        valid_page_mappings
-                        and valid_page_mappings[-1].matched_doc_line_index == doc_line_idx
-                    ):
-                        valid_page_mappings.append(mapping)
-                    continue
+        start_of_page = True
+        current_page_is_valid = True
 
-                last_doc_line_idx = doc_line_idx
+        for mapping_idx, mapping in enumerate(page_mappings):
+            if not mapping.is_valid or mapping.matched_doc_line_index is None:
+                continue
 
-                content_type = self.get_content_type(doc_line_idx)
+            doc_line_idx = mapping.matched_doc_line_index
 
-                if content_type == ContentType.UNORDERED:
-                    # 处理unordered行
-                    if doc_line_idx not in processed_unordered_set:
-                        valid_page_mappings.append(mapping)
-                        current_page_lines.append(doc_line_idx)
-                        page_unordered_lines.add(doc_line_idx)
-                else:
-                    # 处理ordered行
-                    if doc_line_idx == last_ordered_in_page:
-                        # 1. 同一行在当前页面重新出现，说明是页内unordered行隔开
-                        # 2. 跨页面情况：同一行在新页面重新出现
-                        valid_page_mappings.append(mapping)
-                        current_page_lines.append(doc_line_idx)
+            # 避免连续重复添加相同行
+            if last_doc_line_idx == doc_line_idx:
+                # 1. 同一行在当前页面重新出现，说明是页内unordered行隔开
+                # 2. 跨页面情况：同一行在新页面重新出现
+                if (
+                    valid_page_mappings
+                    and valid_page_mappings[-1].matched_doc_line_index == doc_line_idx
+                ):
+                    valid_page_mappings.append(mapping)
+                    start_of_page = False
+                continue
 
-                    elif doc_line_idx > last_ordered_in_page:
-                        # 检查是否需要填充gap
-                        if doc_line_idx > last_ordered_in_page + 1:
-                            gap_start = last_ordered_in_page + 1
-                            gap_end = doc_line_idx - 1
+            last_doc_line_idx = doc_line_idx
+            content_type = self.get_content_type(doc_line_idx)
 
-                            # 检查gap中是否有未来会匹配的ordered行
-                            has_future_ordered_match = False
+            if content_type == ContentType.UNORDERED:
+                # 处理unordered行
+                if doc_line_idx not in processed_unordered_set:
+                    valid_page_mappings.append(mapping)
+                    current_page_lines.append(doc_line_idx)
+                    page_unordered_lines.add(doc_line_idx)
+            else:
+                # 处理ordered行
+                if doc_line_idx == last_ordered_in_page:
+                    valid_page_mappings.append(mapping)
+                    current_page_lines.append(doc_line_idx)
+                    start_of_page = False
+
+                elif doc_line_idx > last_ordered_in_page:
+                    # 检查是否需要填充gap
+                    if doc_line_idx > last_ordered_in_page + 1:
+                        gap_start = last_ordered_in_page + 1
+                        gap_end = doc_line_idx - 1
+
+                        # 检查gap中是否有未来会匹配的ordered行
+                        has_future_ordered_match = False
+                        for gap_idx in range(gap_start, gap_end + 1):
+                            if (
+                                self.get_content_type(gap_idx) == ContentType.ORDERED
+                                and gap_idx in matched_doc_lines_set
+                                and gap_idx not in processed_ordered_set
+                            ):
+                                has_future_ordered_match = True
+                                break
+
+                        if has_future_ordered_match:
+                            # 如果gap中有未来会匹配的行，跳过当前行
+                            continue
+                        else:
+                            # 否则填充gap中的ordered行
+                            gaps_to_fill = []
                             for gap_idx in range(gap_start, gap_end + 1):
-                                if (
-                                    self.get_content_type(gap_idx) == ContentType.ORDERED
-                                    and gap_idx in matched_doc_lines_set
-                                    and gap_idx not in processed_ordered_set
-                                ):
-                                    has_future_ordered_match = True
-                                    break
+                                if self.get_content_type(gap_idx) == ContentType.ORDERED:
+                                    gaps_to_fill.append(gap_idx)
 
-                            if has_future_ordered_match:
-                                # 如果gap中有未来会匹配的行，跳过当前行
-                                continue
+                            # 如果是当前页第一个mapping（有效），则填充gap到last_page_result.doc_lines_by_page
+                            if mapping_idx == 0:
+                                for gap_idx in gaps_to_fill:
+                                    last_page_result.doc_lines_by_page.append(gap_idx)
+                            # 否则填充gap到current_page_lines
                             else:
-                                # 否则填充gap中的ordered行
-                                for gap_idx in range(gap_start, gap_end + 1):
-                                    if self.get_content_type(gap_idx) == ContentType.ORDERED:
-                                        current_page_lines.append(gap_idx)
-                                        last_ordered_in_page = gap_idx  # 更新指针到填充的行
+                                if start_of_page and gaps_to_fill:
+                                    last_page_result.is_valid = False
+                                    current_page_is_valid = False
+                                    with open('page_splitter.txt', 'a') as f:
+                                        f.write(f"pdf_page_idx: {pdf_page_idx}\n")
+                                        f.write(f"last_ordered_in_page: {last_ordered_in_page}\n")
+                                        f.write(f"gap_start: {gap_start}\n")
+                                        f.write(f"gap_end: {gap_end}\n")
+                                        f.write(f"gap_to_fill: {gaps_to_fill}\n")
+                                        f.write("--------------------------------\n")
+                                for gap_idx in gaps_to_fill:
+                                    current_page_lines.append(gap_idx)
 
-                        # 添加当前ordered行
-                        valid_page_mappings.append(mapping)
-                        current_page_lines.append(doc_line_idx)
-                        last_ordered_in_page = doc_line_idx
+                    # 添加当前ordered行
+                    start_of_page = False
+                    valid_page_mappings.append(mapping)
+                    current_page_lines.append(doc_line_idx)
+                    last_ordered_in_page = doc_line_idx
 
-        page_result = PageResult(page_index=pdf_page_idx, doc_lines_by_page=current_page_lines)
+        page_result = PageResult(
+            page_index=pdf_page_idx,
+            doc_lines_by_page=current_page_lines,
+            is_valid=current_page_is_valid,
+        )
 
         return page_result, page_unordered_lines, last_ordered_in_page, valid_page_mappings

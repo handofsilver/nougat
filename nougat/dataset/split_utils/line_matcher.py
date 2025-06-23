@@ -3,7 +3,7 @@ import re
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from nougat.dataset.split_utils.text_cleaner import squeeze_text
-from nougat.dataset.split_utils.string_matcher import get_char_match_score
+from nougat.dataset.split_utils.string_matcher import calculate_similarity_score
 from nougat.dataset.split_utils.pdf_processor import extract_lower_pdf_lines
 
 # ================================
@@ -218,14 +218,9 @@ class MatchingRules:
         Returns:
             length_penalty: 长度惩罚因子 (0.1 到 1.0)
         """
-        if not pdf_content or not mmd_content:
-            return 1.0
 
         pdf_len = len(pdf_content.strip())
         mmd_len = len(mmd_content.strip())
-
-        if mmd_len == 0:
-            return 1.0
 
         length_ratio = pdf_len / mmd_len
 
@@ -344,8 +339,18 @@ class LineMatcher:
 
         # 优先处理ordered匹配：按距离排序
         if ordered_matches:
+            windowed_ordered_matches = [
+                match
+                for match in ordered_matches
+                if match.local_index >= context.current_ordered_pointer - self.window_size
+                and match.local_index <= context.current_ordered_pointer + self.window_size
+            ]
+            if not windowed_ordered_matches:
+                return MatchResult(is_valid=False)
 
-            def distance_key(match: MatchResult, dist_penalty: int = self.window_size / 2):
+            ordered_matches = windowed_ordered_matches
+
+            def distance_key(match: MatchResult, dist_penalty: int = self.window_size // 2):
                 if match.local_index >= context.current_ordered_pointer:
                     return match.local_index - context.current_ordered_pointer
                 else:
@@ -354,10 +359,8 @@ class LineMatcher:
             ordered_matches.sort(key=distance_key)
             ordered_result = ordered_matches[0]
 
-            distance = abs(ordered_result.local_index - context.current_ordered_pointer)
-            if distance <= self.window_size:
-                self._update_ordered_pointer(context, ordered_result.local_index)
-                return ordered_result
+            self._update_ordered_pointer(context, ordered_result.local_index)
+            return ordered_result
 
         # 如果没有ordered匹配，尝试unordered
         if unordered_matches:
@@ -427,13 +430,16 @@ class LineMatcher:
                 if context.current_ordered_pointer <= idx
                 and idx <= context.current_ordered_pointer + self.window_size
             ]
-            candidates = windowed_candidates if windowed_candidates else candidates
+            if not windowed_candidates:
+                return MatchResult(is_valid=False)
+
+            candidates = windowed_candidates
 
         # 计算匹配分数
         scores = []
         for local_index in candidates:
             if local_index < len(content_lines):
-                score = get_char_match_score(
+                score = calculate_similarity_score(
                     content=content_lines[local_index].content, query=strip_pdf_line
                 )
                 scores.append(score)
@@ -453,6 +459,7 @@ class LineMatcher:
                 is_valid=True,
                 matched_index=original_line_index,
                 local_index=local_index,
+                matched_content=content_lines[local_index].content,
                 match_score=max_score,
                 match_type='dual_inverted',
                 content_type=content_type,

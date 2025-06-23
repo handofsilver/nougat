@@ -7,7 +7,7 @@
 import re
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
-from nougat.dataset.split_utils.string_matcher import get_char_match_score
+from nougat.dataset.split_utils.string_matcher import find_match_positions
 
 
 @dataclass
@@ -91,10 +91,9 @@ class RegionBoundaryMatcher:
         # 选择匹配策略
         if boundary_type == "last":
             # 对于region末尾，使用双向匹配，优选end位置靠后的结果
-            match_result = get_char_match_score(
+            match_result = find_match_positions(
                 content=content.lower(),
                 query=query.lower(),
-                return_position=True,
                 bidirectional_match=True,
             )
 
@@ -107,10 +106,9 @@ class RegionBoundaryMatcher:
                 return None
         else:
             # 对于region开头，使用正向匹配
-            match_result = get_char_match_score(
+            match_result = find_match_positions(
                 content=content.lower(),
                 query=query.lower(),
-                return_position=True,
                 bidirectional_match=False,
             )
 

@@ -18,7 +18,7 @@ import re
 
 def split_markdown(
     doc: str, pdf: pypdf.PdfReader, figure_info: Dict
-) -> Tuple[List[str], List[Tuple[int, int]], List[Tuple[int, int]], List[int]]:
+) -> Tuple[List[str], List[int]]:
     """
     Split a PDF document into Markdown paragraphs.
 
@@ -31,12 +31,11 @@ def split_markdown(
         Tuple[List[str], List[Tuple[int, int]], List[Tuple[int, int]], List[int]]:
             - doc_lines_by_pages: 每一页的行数组
             - page_spans: 每一页的文本范围
-            - coincident_pages: 两页重合的页码对
-            - bad_pages: 两页冲突的页码对
+            - bad_page_indices: 两页冲突的页码对
     """
     # 解析markdown文本
     doc_lines, text_obj_map, line_tag_map = parse_markdown_lines(doc)
-    
+
     # 分离内容
     ordered_lines, unordered_lines = separate_content_by_type(doc_lines, line_tag_map)
 
@@ -59,8 +58,12 @@ def split_markdown(
 
     # 生成最终的页面内容
     doc_text_by_pages = []
+    bad_page_indices = []
 
     for page_result in doc_pages:
+        if not page_result.is_valid:
+            bad_page_indices.append(page_result.page_index)
+
         page_content = []
 
         # 为每个mmd_index维护出现次数计数器
@@ -100,33 +103,38 @@ def split_markdown(
 
         # 组合页面内容
         page_content = [_post_process_doc_line(content) for content in page_content]
-        page_content = [text_obj_map[doc_line] if doc_line in text_obj_map else doc_line for doc_line in page_content]
-            
+        page_content = [
+            text_obj_map[doc_line] if doc_line in text_obj_map else doc_line
+            for doc_line in page_content
+        ]
+
         page_text = "\n".join(page_content)
+        page_text = (
+            page_text.replace('[BOLD_TEMP]', '**')
+            .replace('[END_BOLD_TEMP]', '**')
+            .replace('[ITALIC_TEMP]', '_')
+            .replace('[END_ITALIC_TEMP]', '_')
+        )
         doc_text_by_pages.append(page_text)
 
-    # 简化处理：返回空的coincident_pages和bad_pages
-    coincident_pages = []
-    bad_pages = []
-    
-    return doc_text_by_pages,  coincident_pages, bad_pages
+    return doc_text_by_pages, bad_page_indices
 
 
 def _get_doc_line_content(doc_lines: List[str], mmd_index: int) -> str:
     """获取指定行的内容"""
     if not 0 <= mmd_index < len(doc_lines):
         return ""
-    
-    doc_line =  doc_lines[mmd_index]
-    
+
+    doc_line = doc_lines[mmd_index]
+
     if doc_line.startswith('[TEXT]') or doc_line.endswith('[END_TEXT]'):
         return ""
-    
+
     return doc_line
-   
-def _post_process_doc_line(doc_line: str) -> str:    
+
+
+def _post_process_doc_line(doc_line: str) -> str:
     if re.match(r'^\[[A-Z_]+(:[^\]]*)?\]', doc_line) and re.search(r'\[END_[A-Z_]+\]$', doc_line):
         return re.sub(r'\[([A-Z]+):[^\]]*\]', r'[\1]', doc_line)
     else:
         return f"[TEXT]{doc_line}[END_TEXT]"
-

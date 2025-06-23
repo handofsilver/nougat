@@ -381,4 +381,4 @@ def encode_formula_in_markdown(doc_lines: List[str], debug=False):
 
 if __name__ == "__main__":
     txt = r'such as \(\|{\mathbf{Z}}\odot({\mathbf{Y}}-{\mathbf{B}}{\mathbf{S}}^{({\mathcal{L}})})\|\)", which will influence the learned and matrices via backpropagation.'
-    print(encode_formula_in_markdown(txt))
+    print(encode_formula_in_markdown([txt]))

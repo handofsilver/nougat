@@ -13,7 +13,6 @@ class ContentLine:
     tag_type: str  # 标签类型，如'TEXT', 'FIGURE_TITLE'等
     content_type: str  # 内容类型，如'ordered', 'unordered'
     content: str  # 行的文本内容
-    is_tag_line: bool = False  # 是否是独立的标签行（如[TEXT]、[END_TEXT]）
 
     def replace_content(self, content: str):
         return ContentLine(
@@ -22,7 +21,6 @@ class ContentLine:
             tag_type=self.tag_type,
             content_type=self.content_type,
             content=content,
-            is_tag_line=self.is_tag_line,
         )
 
 
@@ -34,12 +32,14 @@ def separate_content_by_type(
 
     Args:
         doc_lines: 文档行列表
-        line_tag_map: 行标签映射，格式为 {行号: {'type': 标签类型, 'content_type': 'ordered'|'unordered', 'is_tag_line': bool}}
+        line_tag_map: 行标签映射，格式为 {行号: {'type': 标签类型, 'content_type': 'ordered'|'unordered'}}
 
     Returns:
         Tuple[List[ContentLine], List[ContentLine]]: 分别返回有序和无序内容的纯文本列表
     """
     doc_lines = encode_formula_in_markdown(doc_lines)
+
+    doc_lines = clean_bold_italic_tag(doc_lines)
 
     ordered_length, unordered_length = 0, 0
     ordered_text_lines, unordered_text_lines = [], []
@@ -60,8 +60,7 @@ def separate_content_by_type(
             local_index=local_index,
             tag_type=tag_info['type'],
             content_type=tag_info['content_type'],
-            content=line_content.strip(),
-            is_tag_line=tag_info.get('is_tag_line', False),
+            content=line_content.strip()
         )
 
         clean_lowercase_text = get_lowercase_text_for_matching(content_line)
@@ -81,6 +80,20 @@ def separate_content_by_type(
     return ordered_text_lines, unordered_text_lines
 
 
+def clean_bold_italic_tag(doc_lines: str) -> str:
+    """
+    清理文本中的[BOLD_TEMP]和[ITALIC_TEMP]标签
+    """
+    doc = "\n".join(doc_lines)
+    doc = (
+        doc.replace('[BOLD_TEMP]', '')
+        .replace('[END_BOLD_TEMP]', '')
+        .replace('[ITALIC_TEMP]', '')
+        .replace('[END_ITALIC_TEMP]', '')
+    )
+    return doc.split("\n")
+
+
 def get_lowercase_text_for_matching(content_line: ContentLine) -> str:
     """
     从ContentLine中提取用于匹配的干净文本，转为小写
@@ -92,14 +105,13 @@ def get_lowercase_text_for_matching(content_line: ContentLine) -> str:
        str: 清理后的文本内容
     """
     # 如果是标签行，返回空字符串（不参与匹配）
-    if content_line.is_tag_line:
-        return ""
-
+    
     text = content_line.content
     tag_type = content_line.tag_type
 
-    # 对于TEXT类型，直接返回内容（已经是纯文本）
+    # 对于TEXT类型，不允许该行有任何标签
     if tag_type == 'TEXT':
+        text = re.sub(r'\[[A-Z_]+\]', '', text)
         return text.strip().lower()
 
     # 定义标签清理规则
