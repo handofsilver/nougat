@@ -16,6 +16,7 @@ class RegionBoundary:
 
     region_id: int
     pdf_line_index: int
+    pdf_line_content: str
     match_score: float
     start_pos: int
     end_pos: int
@@ -124,6 +125,7 @@ class RegionBoundaryMatcher:
         return RegionBoundary(
             region_id=region_id,
             pdf_line_index=mapping.pdf_line_index,
+            pdf_line_content=mapping.pdf_line_content,
             match_score=score,
             start_pos=start_pos,
             end_pos=end_pos,

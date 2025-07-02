@@ -151,3 +151,6 @@ pdfs
 **/__test
 **/*.jsonl
 **/*.seek.map
+**/nougat-0.1.0-*
+**/out
+**/debug

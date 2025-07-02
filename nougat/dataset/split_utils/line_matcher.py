@@ -307,7 +307,8 @@ class LineMatcher:
                 length_penalty = MatchingRules.calculate_length_penalty(
                     strip_pdf_line, strip_doc_line
                 )
-                match_score = 1.0 * length_penalty
+                # match_score = 1.0 * length_penalty
+                match_score = 1.0
             elif (
                 not MatchingRules.is_too_short(strip_doc_line) and strip_doc_line in strip_pdf_line
             ):

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from collections import Counter
 
 from nougat.dataset.split_utils.region_analyzer import get_doc_indices_to_regions
-from nougat.dataset.split_utils.boundary_matcher import RegionBoundaryMatcher
+from nougat.dataset.split_utils.boundary_matcher import RegionBoundaryMatcher, RegionBoundary
 from nougat.dataset.split_utils.page_splitter import PageResult
 
 
@@ -119,7 +119,7 @@ class CharacterPageSplitter:
         return self.doc_pages, split_lines
 
     def _split_line_by_boundaries(
-        self, line_content: str, boundaries: List, regions: List
+        self, doc_line_content: str, boundaries: List, regions: List
     ) -> List[CharacterSegment]:
         """
         根据边界信息分割行内容
@@ -132,9 +132,9 @@ class CharacterPageSplitter:
             return [
                 CharacterSegment(
                     start_pos=0,
-                    end_pos=len(line_content) - 1,
+                    end_pos=len(doc_line_content) - 1,
                     page_index=regions[0].page_index,
-                    content=line_content,
+                    content=doc_line_content,
                 )
             ]
 
@@ -157,16 +157,22 @@ class CharacterPageSplitter:
                     segment_end = boundary1.end_pos
                     next_segment_start = boundary2.start_pos
 
-                    # 添加当前segment
-                    if current_start <= segment_end:
-                        segment_ranges.append((current_start, segment_end))
-
-                    # 检查是否有小片段需要处理
+                    # 可以在这里做一个判断，如果中间有个小片段，我们根据前几个字符匹配，如果匹配到，则将小片段加入到某一个segment中
+                    # refined_segment_end, refined_next_segment_start = self._merge_missing_segment(
+                    #     doc_line_content, segment_end, next_segment_start, boundary1, boundary2
+                    # )
+                    
                     if next_segment_start > segment_end + 1:
                         # 有间隙，直接跳过（扔掉小片段）
                         pass
+                    
+                    refined_segment_end, refined_next_segment_start = segment_end, next_segment_start
+                        
+                    # 添加当前segment
+                    if current_start <= refined_segment_end:
+                        segment_ranges.append((current_start, refined_segment_end))
 
-                    current_start = next_segment_start
+                    current_start = refined_next_segment_start
                     i += 2
                 else:
                     # 处理单个边界的情况
@@ -176,13 +182,13 @@ class CharacterPageSplitter:
                 i += 1
 
         # 添加最后一个segment
-        if current_start < len(line_content):
-            segment_ranges.append((current_start, len(line_content) - 1))
+        if current_start < len(doc_line_content):
+            segment_ranges.append((current_start, len(doc_line_content) - 1))
 
         # 根据分割范围创建segments
         segments = []
         for i, (start, end) in enumerate(segment_ranges):
-            content = line_content[start : end + 1]
+            content = doc_line_content[start : end + 1]
             if content.strip():  # 只保留非空segments
                 # 确定对应的页面索引
                 page_idx = regions[i].page_index if i < len(regions) else regions[-1].page_index
@@ -194,6 +200,62 @@ class CharacterPageSplitter:
                 )
 
         return segments
+
+    def _merge_missing_segment(
+        self,
+        doc_line_content: str,
+        segment_end: int,
+        next_segment_start: int,
+        boundary1: RegionBoundary,
+        boundary2: RegionBoundary,
+    ) -> Tuple[int, int]:
+        """
+        合并缺失的segment
+        """
+        if next_segment_start == segment_end + 1:  # 完美匹配，直接返回
+            return segment_end, next_segment_start
+
+        last_pdf_line_reversed = boundary1.pdf_line_content[::-1].strip().lower()
+        next_pdf_line = boundary2.pdf_line_content.strip().lower()
+
+        last_segment_content_reversed = doc_line_content[:segment_end + 1][::-1].strip().lower()
+        next_segment_content = doc_line_content[next_segment_start:].strip().lower()
+
+        last_match_length = 0
+        next_match_length = 0
+
+        i = 0
+        while i < min(len(last_segment_content_reversed), len(last_pdf_line_reversed)):
+            if last_segment_content_reversed[i] == last_pdf_line_reversed[i]:
+                last_match_length += 1
+            else:
+                break
+            i += 1
+
+        j = 0
+        while j < min(len(next_segment_content), len(next_pdf_line)):
+            if next_segment_content[j] == next_pdf_line[j]:
+                next_match_length += 1
+            else:
+                break
+            j += 1
+
+        # with open('character_splitter.txt', 'a') as f:
+        #     f.write(
+        #         f'last_match_length: {last_match_length}, next_match_length: {next_match_length}\n'
+        #     )
+        #     f.write(f'last_segment_content: {last_segment_content_reversed[::-1]}\n')
+        #     f.write(f'next_segment_content: {next_segment_content}\n')
+        #     f.write(f'last_pdf_line: {last_pdf_line_reversed[::-1]}\n')
+        #     f.write(f'next_pdf_line: {next_pdf_line}\n')
+        #     f.write(f'segment_end: {segment_end}, next_segment_start: {next_segment_start}\n')
+        #     f.write(f'doc_line_content: {doc_line_content}\n')
+        #     f.write(f"--------------------------------\n\n")
+
+        if last_match_length > next_match_length:
+            return segment_end, segment_end + 1
+        else:
+            return next_segment_start - 1, next_segment_start
 
     def _get_doc_line_content(self, doc_line_index: int) -> str:
         """获取指定行的内容"""

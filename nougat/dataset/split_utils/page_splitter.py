@@ -216,13 +216,13 @@ class PageSplitter:
                                 if start_of_page and gaps_to_fill:
                                     last_page_result.is_valid = False
                                     current_page_is_valid = False
-                                    with open('page_splitter.txt', 'a') as f:
-                                        f.write(f"pdf_page_idx: {pdf_page_idx}\n")
-                                        f.write(f"last_ordered_in_page: {last_ordered_in_page}\n")
-                                        f.write(f"gap_start: {gap_start}\n")
-                                        f.write(f"gap_end: {gap_end}\n")
-                                        f.write(f"gap_to_fill: {gaps_to_fill}\n")
-                                        f.write("--------------------------------\n")
+                                    # with open('page_splitter.txt', 'a') as f:
+                                    #     f.write(f"pdf_page_idx: {pdf_page_idx}\n")
+                                    #     f.write(f"last_ordered_in_page: {last_ordered_in_page}\n")
+                                    #     f.write(f"gap_start: {gap_start}\n")
+                                    #     f.write(f"gap_end: {gap_end}\n")
+                                    #     f.write(f"gap_to_fill: {gaps_to_fill}\n")
+                                    #     f.write("--------------------------------\n")
                                 for gap_idx in gaps_to_fill:
                                     current_page_lines.append(gap_idx)
 
