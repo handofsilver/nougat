@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 
 """
 
+import re
 import pypdf
 from typing import Dict, List, Tuple
 from nougat.dataset.split_utils.markdown_parser import parse_markdown_lines
@@ -13,8 +14,6 @@ from nougat.dataset.split_utils.line_matcher import filter_and_match_lines
 from nougat.dataset.split_utils.page_splitter import PageSplitter
 from nougat.dataset.split_utils.character_splitter import split_characters_in_pages
 from nougat.dataset.split_utils.content_separator import separate_content_by_type
-import re
-
 
 def split_markdown(
     doc: str, pdf: pypdf.PdfReader, figure_info: Dict

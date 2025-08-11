@@ -118,6 +118,7 @@ class SwinEncoder(nn.Module):
         Args:
             x: (batch_size, num_channels, height, width)
         """
+        # print('model.py', 121, x[0][0])
         x = self.model.patch_embed(x)
         x = self.model.pos_drop(x)
         x = self.model.layers(x)
@@ -146,7 +147,7 @@ class SwinEncoder(nn.Module):
             return test_transform
 
     def prepare_input(
-        self, img: Image.Image, random_padding: bool = False
+        self, img: Image.Image, random_padding: bool = False, crop_margin: bool = False
     ) -> torch.Tensor:
         """
         Convert PIL Image to tensor according to specified input_size after following steps below:
@@ -158,7 +159,10 @@ class SwinEncoder(nn.Module):
             return
         # crop margins
         try:
-            img = self.crop_margin(img.convert("RGB"))
+            if crop_margin:
+                img = self.crop_margin(img.convert("RGB"))
+            else:
+                img = img.convert("RGB")
         except OSError:
             # might throw an error for broken files
             return
@@ -539,6 +543,7 @@ class NougatModel(PreTrainedModel):
             attention_mask=attention_mask[:, :-1],
             labels=decoder_input_ids[:, 1:].contiguous(),
         )
+        # print('543 model', decoder_outputs)
         return decoder_outputs
 
     def _init_weights(self, *args, **kwargs):

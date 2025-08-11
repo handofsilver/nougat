@@ -1,21 +1,25 @@
 resume_from_checkpoint_path: null
-result_path: "result"
-model_path: "nougat-0.1.0-small" #null
-dataset_paths: ["data/train.jsonl"] #["data/train.jsonl"]
-tokenizer: "dataset/tokenizer.json"
-exp_name: "nougat"
-train_batch_sizes: [1]
+result_path: "/data1/nzw/model_out/"
+model_path: "/data1/nzw/model/nougat-base"
+pretrained_weight_path: "/data1/nzw/model/nougat-base/aligned_model_weights.pth"
+dataset_paths: ["./train.jsonl"]
+tokenizer: "/data1/nzw/model/nougat-base/tokenizer.json"
+exp_name: "nougat_finetune"
+exp_version: "v1"
+train_batch_sizes: [2]
 num_workers: 8
-val_batch_sizes: [1]
+val_batch_sizes: [2]
 val_batches: 1
 input_size: [896, 672]
-max_length: 1024 #4096
-max_position_embeddings: 1024 #4096
-accumulate_grad_batches: 3
+# input_size: [384, 384]
+max_length: 4096
+max_position_embeddings: 4096
+accumulate_grad_batches: 4
 window_size: 7
+# window_size: 12
 patch_size: 4
-embed_dim: 32   #128
-hidden_dimension: 256 #1024
+embed_dim: 128
+hidden_dimension: 1024
 num_heads: [4, 8, 16, 32]
 encoder_layer: [2, 2, 14, 2]
 decoder_layer: 10
@@ -27,10 +31,11 @@ min_lr: 7.5e-6
 lr_step: 16
 gamma: 0.9996
 warmup_steps: 250
-num_training_samples_per_epoch: 10000
+num_training_samples_per_epoch: 10
 max_epochs: 30
 max_steps: -1
-val_check_interval: null
+val_check_interval: 800
 check_val_every_n_epoch: 1
 gradient_clip_val: 0.5
 verbose: False
+debug: True

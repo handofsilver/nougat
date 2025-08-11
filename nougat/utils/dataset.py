@@ -4,7 +4,6 @@ Copyright (c) 2022-present NAVER Corp.
 MIT License
 Copyright (c) Meta Platforms, Inc. and affiliates.
 """
-
 import logging
 import os
 from math import prod
@@ -143,7 +142,11 @@ class SciPDFDataset(Dataset):
     empty_sample = None
 
     def __init__(
-        self, path_to_index: str, split: str = "train", root_name="", template="%s"
+        self,
+        path_to_index: str,
+        split: str = "train",
+        root_name="",
+        template="%s",
     ) -> None:
         super().__init__()
         self.path_to_index = Path(path_to_index)
@@ -161,7 +164,9 @@ class SciPDFDataset(Dataset):
         if seek_path.exists():
             self.seek_map = orjson.loads(seek_path.open().read())
         else:
-            raise ValueError('No "%s" found in %s' % (seek_path.name, str(self.path_to_root)))
+            raise ValueError(
+                'No "%s" found in %s' % (seek_path.name, str(self.path_to_root))
+            )
         self.dataset_length = len(self.seek_map)
 
     def __len__(self) -> int:
@@ -245,8 +250,17 @@ class NougatDataset(Dataset):
         if sample is None or sample["image"] is None or prod(sample["image"].size) == 0:
             input_tensor = None
         else:
+            # 训练阶段：没有图片的目标开启裁剪边缘和随机padding选项
+            # 测试阶段：不裁剪边缘也不随机padding
+            crop_margin = False
+            random_padding = False
+            if self.split == "train" and not('[FIGURE_COORDS]' in sample["ground_truth"]):
+                crop_margin = True
+                random_padding = True
             input_tensor = self.nougat_model.encoder.prepare_input(
-                sample["image"], random_padding=self.split == "train"
+                sample["image"],
+                crop_margin = crop_margin, 
+                random_padding = random_padding
             )
 
         tokenizer_out = self.nougat_model.decoder.tokenizer(
@@ -266,7 +280,9 @@ class NougatDataset(Dataset):
             while random.random() < 0.1:
                 try:
                     pos = random.randint(1, unpadded_length - 2)
-                    token = random.randint(23, len(self.nougat_model.decoder.tokenizer) - 1)
+                    token = random.randint(
+                        23, len(self.nougat_model.decoder.tokenizer) - 1
+                    )
                     input_ids[pos] = token
                 except ValueError:
                     break

@@ -4,14 +4,14 @@ Copyright (c) 2022-present NAVER Corp.
 MIT License
 Copyright (c) Meta Platforms, Inc. and affiliates.
 """
+import os
 import argparse
 import datetime
-import os
 from os.path import basename
 from pathlib import Path
 
-import lightning.pytorch as pl
 import torch
+import lightning.pytorch as pl
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
@@ -131,7 +131,6 @@ def save_config_file(config, path):
         f.write(config.dumps(modified_color=None, quote_str=True))
         print(f"Config is saved at {save_path}")
 
-
 def train(config):
     """
     Train a Nougat model using the provided configuration.
@@ -143,6 +142,11 @@ def train(config):
 
     model_module = NougatModelPLModule(config)
     data_module = NougatDataPLModule(config)
+
+    # print('train.py', 147, model_module.model)
+    model_module.model.load_state_dict(
+        torch.load(config.pretrained_weight_path)
+    )
 
     # add datasets to data_module
     datasets = {"train": [], "validation": []}

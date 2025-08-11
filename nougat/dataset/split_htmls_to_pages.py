@@ -168,7 +168,6 @@ def process_paper(
         logger.error(f"Error processing {fname}: {str(e)}")
         return total_pages, 0
 
-
 def process_htmls(args):
     """
     主要功能：将HTML文件转换为按页分割的markdown文件和对应的页面图像
@@ -275,7 +274,6 @@ def process_htmls(args):
             total_pages,
             (100 * total_pages_extracted / max(1, total_pages)),
         )
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

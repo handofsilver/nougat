@@ -8,9 +8,9 @@ import math
 import random
 from pathlib import Path
 
+import torch
 import numpy as np
 import lightning.pytorch as pl
-import torch
 from lightning.pytorch.utilities import rank_zero_only
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim.lr_scheduler import LambdaLR
@@ -28,17 +28,17 @@ class NougatModelPLModule(pl.LightningModule):
         if self.config.get("model_path", False):
             self.model = NougatModel.from_pretrained(
                 self.config.model_path,
-                input_size=self.config.input_size,
-                max_length=self.config.max_length,
-                align_long_axis=self.config.align_long_axis,
-                window_size=self.config.window_size,
-                encoder_layer=self.config.encoder_layer,
-                decoder_layer=self.config.decoder_layer,
-                patch_size=self.config.patch_size,
-                embed_dim=self.config.embed_dim,
-                num_heads=self.config.num_heads,
-                hidden_dimension=self.config.hidden_dimension,
-                ignore_mismatched_sizes=True,
+                # input_size=self.config.input_size,
+                # max_length=self.config.max_length,
+                # align_long_axis=self.config.align_long_axis,
+                # window_size=self.config.window_size,
+                # encoder_layer=self.config.encoder_layer,
+                # decoder_layer=self.config.decoder_layer,
+                # patch_size=self.config.patch_size,
+                # embed_dim=self.config.embed_dim,
+                # num_heads=self.config.num_heads,
+                # hidden_dimension=self.config.hidden_dimension,
+                # ignore_mismatched_sizes=True,
             )
         else:
             self.model = NougatModel(
@@ -71,11 +71,13 @@ class NougatModelPLModule(pl.LightningModule):
         decoder_input_ids = torch.cat(decoder_input_ids)
         attention_masks = torch.cat(attention_masks)
         loss = self.model(image_tensors, decoder_input_ids, attention_masks)[0]
+        # print('lightning_module', 77, loss)
         if loss is not None:
             self.log_dict({"train/loss": loss}, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
+        print(79, '验证步骤')
         if batch is None:
             return
         image_tensors, decoder_input_ids, _ = batch
@@ -92,10 +94,13 @@ class NougatModelPLModule(pl.LightningModule):
         gts = self.model.decoder.tokenizer.batch_decode(
             markdown, skip_special_tokens=True
         )
+        print('96 真实标签 lighting_module ', gts[:800])
+        print('97 预测结果 lighting_module', preds[:800])
         metrics = get_metrics(gts, preds, pool=False)
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
+        print(100, scores)
         self.validation_step_outputs.append(scores)
         return scores
 
