@@ -131,6 +131,7 @@ def save_config_file(config, path):
         f.write(config.dumps(modified_color=None, quote_str=True))
         print(f"Config is saved at {save_path}")
 
+
 def train(config):
     """
     Train a Nougat model using the provided configuration.
@@ -148,27 +149,50 @@ def train(config):
         torch.load(config.pretrained_weight_path)
     )
 
-    # add datasets to data_module
-    datasets = {"train": [], "validation": []}
-    for i, dataset_path in enumerate(config.dataset_paths):
-        for split in ["train", "validation"]:
-            datasets[split].append(
-                NougatDataset(
-                    dataset_path=dataset_path,
-                    nougat_model=model_module.model,
-                    max_length=config.max_length,
-                    split=split,
-                )
+    # 1. loading training datasets
+    print(f"Loading training datasets from: {config.train_dataset_paths}")
+    train_datasets = []
+    for dataset_path in config.train_dataset_paths:
+        train_datasets.append(
+            NougatDataset(
+                dataset_path=dataset_path,
+                nougat_model=model_module.model,
+                max_length=config.max_length,
+                split="train",
             )
-    data_module.train_datasets = datasets["train"]
-    data_module.val_datasets = datasets["validation"]
+        )
+
+    # 2. loading validation datasets
+    print(f"Loading validation datasets from: {config.val_dataset_paths}")
+    val_datasets = []
+    for dataset_path in config.val_dataset_paths:
+        val_datasets.append(
+            NougatDataset(
+                dataset_path=dataset_path,
+                nougat_model=model_module.model,
+                max_length=config.max_length,
+                split="validation",
+            )
+        )
+
+    # 3. assign datasets to data_module
+    data_module.train_datasets = train_datasets
+    data_module.val_datasets = val_datasets
+
+    print("Datasets loaded successfully!")
 
     lr_callback = LearningRateMonitor(logging_interval="step")
 
     checkpoint_callback = ModelCheckpoint(
-        save_last=True,
-        dirpath=Path(config.result_path) / config.exp_name / config.exp_version,
+        save_last=True,  # 保存最后一个模型，文件名为 last.ckpt
+        dirpath=Path(config.result_path) /
+        config.exp_name / config.exp_version,
+        save_top_k=1,    # 只保存最好的1个模型
+        monitor="val/edit_dist",  # 监控我们确认过的指标：验证集编辑距离
+        mode="min",      # 编辑距离越小越好，所以模式是 "min"
+        filename="{epoch:02d}-{val_edit_dist:.4f}",  # 最佳模型的文件名（使用下划线，避免非法字符）
     )
+
     grad_norm_callback = GradNormCallback()
     custom_ckpt = CustomCheckpointIO()
 

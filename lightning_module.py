@@ -77,7 +77,7 @@ class NougatModelPLModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
-        print(79, '验证步骤')
+        # print(79, '验证步骤')
         if batch is None:
             return
         image_tensors, decoder_input_ids, _ = batch
@@ -94,13 +94,13 @@ class NougatModelPLModule(pl.LightningModule):
         gts = self.model.decoder.tokenizer.batch_decode(
             markdown, skip_special_tokens=True
         )
-        print('96 真实标签 lighting_module ', gts[:800])
-        print('97 预测结果 lighting_module', preds[:800])
+        # print('96 真实标签 lighting_module ', gts[:800])
+        # print('97 预测结果 lighting_module', preds[:800])
         metrics = get_metrics(gts, preds, pool=False)
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
-        print(100, scores)
+        # print(100, scores)
         self.validation_step_outputs.append(scores)
         return scores
 
@@ -109,7 +109,19 @@ class NougatModelPLModule(pl.LightningModule):
             self.validation_step_outputs is not None
             and len(self.validation_step_outputs) >= 1
         ):
-            self.log_dict(self.validation_step_outputs[0], sync_dist=True)
+            # 将所有 batch 的验证指标做均值聚合后再记录，避免只记录第一个 batch 导致指标缺失
+            aggregated = {}
+            counts = {}
+            for step_scores in self.validation_step_outputs:
+                for key, value in step_scores.items():
+                    aggregated[key] = aggregated.get(key, 0.0) + float(value)
+                    counts[key] = counts.get(key, 0) + 1
+            mean_scores = {k: aggregated[k] / max(1, counts[k]) for k in aggregated}
+            # 额外记录一份用下划线替换斜杠的键，方便文件名格式化
+            alias_scores = {k.replace('/', '_'): v for k, v in mean_scores.items()}
+            # 先记录原始指标（供 monitor 使用），再记录别名指标（供文件名格式化使用）
+            self.log_dict(mean_scores, sync_dist=True)
+            self.log_dict(alias_scores, sync_dist=True)
             self.validation_step_outputs.clear()
 
     def configure_optimizers(self):
@@ -234,7 +246,7 @@ class NougatDataPLModule(pl.LightningDataModule):
                 torch.utils.data.ConcatDataset(self.val_datasets),
                 batch_size=self.val_batch_sizes[0],
                 pin_memory=True,
-                shuffle=True,
+                shuffle=False,
                 collate_fn=self.ignore_none_collate,
             )
         ]

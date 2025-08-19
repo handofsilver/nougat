@@ -23,7 +23,7 @@ class NougatOCR:
         model_type: base or small
         '''
         if not model_path:
-            if model_type=='base':[
+            if model_type=='base':
                 model_path = "facebook/nougat-base"
             else:
                 model_path = "facebook/nougat-small"
@@ -46,7 +46,7 @@ class NougatOCR:
         dollar_sequence = re.sub(r'([a-zA-Z]+)\$', r'\1 $', dollar_sequence)
         dollar_sequence = re.sub(r'\$([a-zA-Z]+)', r'$ \1', dollar_sequence)
         dollar_sequence = dollar_sequence.replace('****', '** **').replace('_-', '-_')
-        return dollar_sequence]
+        return dollar_sequence
 
     def ocr(self, img_paths=None, images=None, batch_size=8):
         if img_paths:
@@ -107,5 +107,22 @@ if __name__=='__main__':
     # nougat = NougatAPI()
     # print(nougat.api(img_path))
     nougat_path = '/data1/nzw/model/nougat-base'
-    nougat = NougatOCR(nougat_path)
-    print(nougat.model)
+    nougat = NougatOCR(model_path=nougat_path,
+                       model_type='base',
+                       device='cuda')
+    # print(nougat.model)
+    
+    import json
+
+    with open("./img_path.json", "r") as f:
+        img_paths = json.load(f)
+        img_paths = img_paths['img_paths']
+    
+    result = nougat.ocr(img_paths=img_paths)
+    
+    result_dict = {}
+    for i, result in enumerate(result):
+        result_dict[img_paths[i]] = result
+
+    with open('./results/result_raw.json', 'w') as f:
+        json.dump(result_dict, f)
