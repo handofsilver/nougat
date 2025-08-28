@@ -318,7 +318,8 @@ def format_element(element: Element, keep_refs: bool = False, latex_env: bool = 
 
     if isinstance(element, AuthorNote):
         parts = format_children(element, keep_refs)
-        return ["\n[THANK_NOTE]" + "".join(parts) + "[END_THANK_NOTE]"]
+        # return ["\n[THANK_NOTE]" + "".join(parts) + "[END_THANK_NOTE]"]
+        return "".join(parts)
 
     if isinstance(element, AuthorList):
         parts = format_children(element, keep_refs)

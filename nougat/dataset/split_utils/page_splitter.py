@@ -129,7 +129,7 @@ class PageSplitter:
         processed_ordered_set: Set[DocLineIndex],
         processed_unordered_set: Set[DocLineIndex],
         current_ordered_pointer: int,
-        last_page_result: PageResult,
+        last_page_result: Optional[PageResult],
     ) -> PageResult:
         """处理单个PDF页 - 按映射顺序去重连续重复"""
 
@@ -209,12 +209,14 @@ class PageSplitter:
 
                             # 如果是当前页第一个mapping（有效），则填充gap到last_page_result.doc_lines_by_page
                             if mapping_idx == 0:
-                                for gap_idx in gaps_to_fill:
-                                    last_page_result.doc_lines_by_page.append(gap_idx)
+                                if last_page_result is not None:
+                                    for gap_idx in gaps_to_fill:
+                                        last_page_result.doc_lines_by_page.append(gap_idx)
                             # 否则填充gap到current_page_lines
                             else:
                                 if start_of_page and gaps_to_fill:
-                                    last_page_result.is_valid = False
+                                    if last_page_result is not None:
+                                        last_page_result.is_valid = False
                                     current_page_is_valid = False
                                     # with open('page_splitter.txt', 'a') as f:
                                     #     f.write(f"pdf_page_idx: {pdf_page_idx}\n")

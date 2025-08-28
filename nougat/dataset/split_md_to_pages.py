@@ -60,8 +60,9 @@ def split_markdown(
     bad_page_indices = []
 
     for page_result in doc_pages:
-        if not page_result.is_valid:
-            bad_page_indices.append(page_result.page_index)
+        if page_result is None or not page_result.is_valid:
+            if page_result is not None:
+                bad_page_indices.append(page_result.page_index)
 
         page_content = []
 

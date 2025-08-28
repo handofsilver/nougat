@@ -20,6 +20,7 @@ class MatchResult:
     match_score: Optional[float] = None
     match_type: Optional[str] = None  # 'exact', 'inverted', 'rule'
     content_type: Optional[str] = None  # 'ordered', 'unordered'
+    tag_type: Optional[str] = None  # 'TEXT', 'FIGURE_TITLE'等
     local_index: Optional[int] = None  # 在ordered或unordered中的局部索引
     matched_content: Optional[str] = None  # 匹配的行内容
 
@@ -46,6 +47,7 @@ class DualMatchResult:
     match_score: Optional[float] = None
     match_type: Optional[str] = None
     content_type: Optional[str] = None  # 'ordered', 'unordered'
+    tag_type: Optional[str] = None  # 'TEXT', 'FIGURE_TITLE'等
     is_valid: bool = False
 
 
@@ -325,6 +327,7 @@ class LineMatcher:
                         match_score=match_score,
                         match_type=match_type,
                         content_type=content_line.content_type,
+                        tag_type=content_line.tag_type,
                     )
                     matches.append(result)
 
@@ -464,6 +467,7 @@ class LineMatcher:
                 match_score=max_score,
                 match_type='dual_inverted',
                 content_type=content_type,
+                tag_type=content_lines[local_index].tag_type,
             )
 
         return MatchResult(is_valid=False)
@@ -524,6 +528,7 @@ def filter_and_match_lines(pdf, ordered_lines, unordered_lines):
                 match_score=result.match_score,
                 match_type=result.match_type,
                 content_type=result.content_type,
+                tag_type = result.tag_type,
                 is_valid=result.is_valid,
             )
             page_mappings.append(mapping)

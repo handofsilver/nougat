@@ -124,7 +124,7 @@ def get_lowercase_text_for_matching(content_line: ContentLine) -> str:
         'FIGURE_TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
         'TABLE_TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
         'ALGORITHM_TITLE': rf'\[{tag_type}\](.*?)\[END_{tag_type}\]',
-        'THANK_NOTE': r'\[THANK_NOTE\](.*?)\[END_THANK_NOTE\]',
+        # 'THANK_NOTE': r'\[THANK_NOTE\](.*?)\[END_THANK_NOTE\]',
         'FOOTNOTE': r'\[FOOTNOTE:.*?\](.*?)\[END_FOOTNOTE\]',
     }
 

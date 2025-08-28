@@ -31,12 +31,11 @@ def reorder_ieee_copyright(doc: str) -> str:
     return doc
 
 
-def preprocess_author_and_thank_note(doc: str) -> str:
+def preprocess_author_tag(doc: str) -> str:
     """
     预处理作者信息和致谢注释：
-    1. 如果[AUTHOR]中嵌套了[THANK_NOTE]，将其提取出来放到[END_AUTHOR]后
-    2. 压缩[AUTHOR]中的换行为一行
-    3. 如果[AUTHOR]中没有[THANK_NOTE]，只做换行压缩
+    将[AUTHOR]标签中的嵌套标签（目前仅发现[FOOTNOTE]标签）移出，并将[AUTHOR]标签内容压缩为一行
+    支持处理多个FOOTNOTE标签
     """
     author_pattern = r'\[AUTHOR\](.*?)\[END_AUTHOR\]'
     author_match = re.search(author_pattern, doc, re.DOTALL)
@@ -46,27 +45,31 @@ def preprocess_author_and_thank_note(doc: str) -> str:
 
     author_full_content = author_match.group(1)
 
-    # 检查AUTHOR中是否包含THANK_NOTE
-    thank_note_pattern = r'\[THANK_NOTE\].*?\[END_THANK_NOTE\]'
-    thank_note_match = re.search(thank_note_pattern, author_full_content, re.DOTALL)
+    # 检查AUTHOR中是否包含FOOTNOTE标签
+    footnote_pattern = r'\[FOOTNOTE:.*?\].*?\[END_FOOTNOTE\]'
+    footnote_matches = list(re.finditer(footnote_pattern, author_full_content, re.DOTALL))
 
-    if thank_note_match:
-        # AUTHOR中有THANK_NOTE，需要提取出来
-        thank_note_content = thank_note_match.group(0)
-
-        # 从AUTHOR内容中移除THANK_NOTE
-        author_clean_content = re.sub(thank_note_pattern, '', author_full_content, flags=re.DOTALL)
+    if footnote_matches:
+        # AUTHOR中有FOOTNOTE，需要提取出来
+        # 收集所有footnote内容
+        footnote_contents = []
+        for match in footnote_matches:
+            footnote_contents.append(match.group(0))
+        
+        # 从AUTHOR内容中移除所有FOOTNOTE
+        author_clean_content = re.sub(footnote_pattern, '', author_full_content, flags=re.DOTALL)
 
         # 压缩AUTHOR内容为一行
         author_clean_content = ' '.join(
             line.strip() for line in author_clean_content.split('\n') if line.strip()
         )
 
-        # 替换整个AUTHOR部分，将THANK_NOTE放到外面
-        replacement = f'[AUTHOR]{author_clean_content}[END_AUTHOR]\n{thank_note_content}\n'
+        # 替换整个AUTHOR部分，将所有FOOTNOTE放到外面
+        all_footnotes = '\n'.join(footnote_contents)
+        replacement = f'[AUTHOR]{author_clean_content}[END_AUTHOR]\n{all_footnotes}\n'
         doc = re.sub(author_pattern, replacement, doc, flags=re.DOTALL)
     else:
-        # AUTHOR中没有THANK_NOTE，只压缩换行
+        # AUTHOR中没有其他标签，只压缩换行
         author_clean_content = ' '.join(
             line.strip() for line in author_full_content.split('\n') if line.strip()
         )
@@ -77,6 +80,17 @@ def preprocess_author_and_thank_note(doc: str) -> str:
 
     return doc
 
+def remove_formatting_commands(doc: str) -> str:
+    """
+    删除排版格式命令
+    """
+    doc = re.sub(r'\\leavevmode', '', doc)
+    doc = re.sub(r'\\nobreak', '', doc)
+    doc = re.sub(r'\\pagebreak', '', doc)
+    doc = re.sub(r'\\nopagebreak', '', doc)
+    doc = re.sub(r'\\enlargethispage\{.*?\}', '', doc)
+    doc = re.sub(r'\\leavevmode\\nobreak\\', '', doc)
+    return doc
 
 def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int, str]]:
     """
@@ -88,27 +102,30 @@ def parse_markdown_lines(doc: str) -> Tuple[List[str], Dict[str, str], Dict[int,
             - 标题到对象的映射
             - 行标签映射
     """
-    # 1. 预处理：处理作者信息和致谢注释
-    doc = preprocess_author_and_thank_note(doc)
+    # 1. 预处理：处理作者信息标签
+    doc = preprocess_author_tag(doc)
 
     # 2. 预处理：展平嵌套标签
     doc = flatten_nested_text_tag(doc)
 
-    # 3. 重新排序IEEE版权声明
+    # 3. 删除排版格式命令
+    doc = remove_formatting_commands(doc)
+
+    # 4. 重新排序IEEE版权声明
     doc = reorder_ieee_copyright(doc)
 
-    # 4. 构建text_to_object映射
+    # 5. 构建text_to_object映射
     text_obj_map = build_tfa_text_to_object(doc)
 
-    # 5. 将TFA标签替换为其标题
+    # 6. 将TFA标签替换为其标题
     doc = replace_tfa_with_titles(doc)
 
-    # 6. 获取文档行
+    # 7. 获取文档行
     doc = re.sub(r'\[TEXT\]|\[END_TEXT\]', '', doc)
     doc_lines = doc.split("\n")
     doc_lines = [line.strip() for line in doc_lines if line.strip()]
 
-    # 7. 构建行标签映射
+    # 8. 构建行标签映射
     line_tag_map = build_line_tag_mapping(doc_lines)
 
     return doc_lines, text_obj_map, line_tag_map
@@ -164,8 +181,22 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
     }
     """
     doc = re.sub(r'\n\n+', '\n', doc)
+    doc = re.sub(r'\[TEXT\]|\[END_TEXT\]', '', doc) # 删除[TEXT]和[END_TEXT]标签
 
     text_to_obj = {}
+    
+    def filter_figure_content(content: str) -> str:
+        """
+        过滤图片内容，只保留图片标题和图片内容
+        """
+        lines = content.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            if line.startswith('[FIGURE'):
+                filtered_lines.append(line)
+
+        return '\n'.join(filtered_lines)
 
     # 处理图片
     figure_matches = re.finditer(r"\[FIGURE:.*?\](.*?)\[END_FIGURE\]", doc, re.DOTALL)
@@ -173,6 +204,7 @@ def build_tfa_text_to_object(doc: str) -> Dict[str, str]:
         full_content = re.sub(
             r'\[([A-Z]+):[^\]]*\]', r'[\1]', match.group(0)
         )  # 新增：将[TAG:*]替换为[TAG]
+        full_content = filter_figure_content(full_content)
         title_match = re.search(
             r"\[FIGURE_TITLE\](.*?)\[END_FIGURE_TITLE\]", match.group(1), re.DOTALL
         )
@@ -237,7 +269,7 @@ def build_line_tag_mapping(doc_lines: List[str]) -> Dict[int, Dict]:
         'TABLE_TITLE': {'content_type': 'unordered'},
         'ALGORITHM_TITLE': {'content_type': 'unordered'},
         'FOOTNOTE': {'content_type': 'unordered'},
-        'THANK_NOTE': {'content_type': 'unordered'},
+        # 'THANK_NOTE': {'content_type': 'unordered'},
     }
 
     for line_num, line in enumerate(doc_lines):
