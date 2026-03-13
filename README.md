@@ -1,201 +1,256 @@
 <div align="center">
 <h1>Nougat: Neural Optical Understanding for Academic Documents</h1>
 
+English | [中文](README_cn.md)
+
 [![Paper](https://img.shields.io/badge/Paper-arxiv.2308.13418-white)](https://arxiv.org/abs/2308.13418)
 [![GitHub](https://img.shields.io/github/license/facebookresearch/nougat)](https://github.com/facebookresearch/nougat)
-[![PyPI](https://img.shields.io/pypi/v/nougat-ocr?logo=pypi)](https://pypi.org/project/nougat-ocr)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/release/python-390/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Hugging Face Spaces](https://img.shields.io/badge/🤗%20Hugging%20Face-Community%20Space-blue)](https://huggingface.co/spaces/ysharma/nougat)
 
 </div>
 
-This is the official repository for Nougat, the academic document PDF parser that understands LaTeX math and tables.
+This repository is a fork of [Meta Nougat](https://github.com/facebookresearch/nougat) with **data-engineering** extensions: a full pipeline for building high-quality training data—from arXiv `.tex` sources to page-aligned `.mmd` / `.png` pairs.
 
-Project page: https://facebookresearch.github.io/nougat/
+Full technical design: **[docs/data_engineering_design.md](docs/data_engineering_design.md)**
 
-## Install
+---
 
-From pip:
-```
-pip install nougat-ocr
-```
+## Differences from upstream Nougat
 
-From repository:
-```
-pip install git+https://github.com/facebookresearch/nougat
-```
+| Module | Upstream Nougat | This fork |
+|--------|-----------------|-----------|
+| `parser/latexml_parser.py` | HTML parsing skeleton | Deep changes: algorithm env detection, caption injection, citation handling |
+| `parser/markdown.py` | Basic Markdown formatting | **Rewritten**: full semantic tag set |
+| `split_utils/` (11 files) | **Absent** | **New**: page-alignment algorithm |
+| `split_md_to_pages.py` | Minimal splitting | **Completely rewritten** |
+| `split_htmls_to_pages.py` | Original entrypoint | **Rewritten**: new API, coordinate injection, layout_parser integration |
+| `patches/` (5 files) | **Absent** | **New**: TeX preprocessing, bibliography/citation fixes, coordinate injection |
+| `preprocess_pipeline.py` | **Absent** | **New**: unified preprocessing from .zip to HTML |
+| `layout_correction.py` | **Absent** | **New**: first-page tag correction via DiT layout detection |
+| `layout_parser/` | **Absent** | **New**: DiT layout detection model (optional) |
 
-> Note, on Windows: If you want to utilize a GPU, make sure you first install the correct PyTorch version. Follow instructions [here](https://pytorch.org/get-started/locally/)
+---
 
-There are extra dependencies if you want to call the model from an API or generate a dataset.
-Install via
+## Quick start
 
-`pip install "nougat-ocr[api]"` or `pip install "nougat-ocr[dataset]"`
+### One-command environment setup
 
-### Get prediction for a PDF
-#### CLI
-
-To get predictions for a PDF run
-
-```
-$ nougat path/to/file.pdf -o output_directory
-```
-
-A path to a directory or to a file where each line is a path to a PDF can also be passed as a positional argument
-
-```
-$ nougat path/to/directory -o output_directory
+```bash
+bash setup_env.sh          # creates conda env named nougat by default
+bash setup_env.sh myenv    # or specify env name
 ```
 
-```
-usage: nougat [-h] [--batchsize BATCHSIZE] [--checkpoint CHECKPOINT] [--model MODEL] [--out OUT]
-              [--recompute] [--markdown] [--no-skipping] pdf [pdf ...]
+The script runs: create conda env → install PyTorch → install nougat + dataset deps → check LaTeXML / pdffigures2, with status output at each step.
 
-positional arguments:
-  pdf                   PDF(s) to process.
+### Manual install
 
-options:
-  -h, --help            show this help message and exit
-  --batchsize BATCHSIZE, -b BATCHSIZE
-                        Batch size to use.
-  --checkpoint CHECKPOINT, -c CHECKPOINT
-                        Path to checkpoint directory.
-  --model MODEL_TAG, -m MODEL_TAG
-                        Model tag to use.
-  --out OUT, -o OUT     Output directory.
-  --recompute           Recompute already computed PDF, discarding previous predictions.
-  --full-precision      Use float32 instead of bfloat16. Can speed up CPU conversion for some setups.
-  --no-markdown         Do not add postprocessing step for markdown compatibility.
-  --markdown            Add postprocessing step for markdown compatibility (default).
-  --no-skipping         Don't apply failure detection heuristic.
-  --pages PAGES, -p PAGES
-                        Provide page numbers like '1-4,7' for pages 1 through 4 and page 7. Only works for single PDFs.
+```bash
+conda create -n nougat python=3.10 -y && conda activate nougat
+pip install torch torchvision          # choose CUDA build if needed
+pip install -e ".[dataset]"
+pip install jieba
 ```
 
-The default model tag is `0.1.0-small`. If you want to use the base model, use `0.1.0-base`.
-```
-$ nougat path/to/file.pdf -o output_directory -m 0.1.0-base
-```
+External tools (needed for preprocessing):
 
-In the output directory every PDF will be saved as a `.mmd` file, the lightweight markup language, mostly compatible with [Mathpix Markdown](https://github.com/Mathpix/mathpix-markdown-it) (we make use of the LaTeX tables).
+- **[LaTeXML](https://math.nist.gov/~BMiller/LaTeXML/)**: `.tex → .html`; on Ubuntu: `sudo apt-get install latexml`
+- **[pdffigures2](https://github.com/allenai/pdffigures2)**: PDF figure extraction; requires Java + sbt, then:
+  ```bash
+  export PDFFIGURES_PATH="/path/to/pdffigures2-assembly.jar"
+  ```
 
-> Note: On some devices the failure detection heuristic is not working properly. If you experience a lot of `[MISSING_PAGE]` responses, try to run with the `--no-skipping` flag. Related: [#11](https://github.com/facebookresearch/nougat/issues/11), [#67](https://github.com/facebookresearch/nougat/issues/67)
+---
 
-#### API
+## Data pipeline
 
-With the extra dependencies you use `app.py` to start an API. Call
+The pipeline has **two stages**, each with its own command. Example paper ID: `2308.13418`.
 
-```sh
-$ nougat_api
-```
+### Stage 0: Preprocessing (.zip/.pdf → HTML)
 
-To get a prediction of a PDF file by making a POST request to http://127.0.0.1:8503/predict/. It also accepts parameters `start` and `stop` to limit the computation to select page numbers (boundaries are included).
-
-The response is a string with the markdown text of the document.
-
-```sh
-curl -X 'POST' \
-  'http://127.0.0.1:8503/predict/' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: multipart/form-data' \
-  -F 'file=@<PDFFILE.pdf>;type=application/pdf'
-```
-To use the limit the conversion to pages 1 to 5, use the start/stop parameters in the request URL: http://127.0.0.1:8503/predict/?start=1&stop=5
-
-## Dataset
-### Generate dataset
-
-To generate a dataset you need 
-
-1. A directory containing the PDFs
-2. A directory containing the `.html` files (processed `.tex` files by [LaTeXML](https://math.nist.gov/~BMiller/LaTeXML/)) with the same folder structure
-3. A binary file of [pdffigures2](https://github.com/allenai/pdffigures2) and a corresponding environment variable `export PDFFIGURES_PATH="/path/to/binary.jar"`
-
-Next run
-
-```
-python -m nougat.dataset.split_htmls_to_pages --html path/html/root --pdfs path/pdf/root --out path/paired/output --figure path/pdffigures/outputs
+```bash
+python -m nougat.dataset.preprocess_pipeline --base-dir /path/to/data_root
 ```
 
-Additional arguments include
+#### Input
 
-| Argument              | Description                                |
-| --------------------- | ------------------------------------------ |
-| `--recompute`         | recompute all splits                       |
-| `--markdown MARKDOWN` | Markdown output dir                        |
-| `--workers WORKERS`   | How many processes to use                  |
-| `--dpi DPI`           | What resolution the pages will be saved at |
-| `--timeout TIMEOUT`   | max time per paper in seconds              |
-| `--tesseract`         | Tesseract OCR prediction for each page     |
-
-Finally create a `jsonl` file that contains all the image paths, markdown text and meta information.
+Place each paper’s **PDF** and **source archive** under `data_root/src/`:
 
 ```
-python -m nougat.dataset.create_index --dir path/paired/output --out index.jsonl
+data_root/
+└── src/
+    ├── 2308.13418.pdf          ← arXiv PDF
+    ├── 2308.13418.zip          ← arXiv source (.zip / .tar.gz)
+    ├── 2309.xxxxx.pdf
+    ├── 2309.xxxxx.zip
+    └── ...
 ```
 
-For each `jsonl` file you also need to generate a seek map for faster data loading:
+#### Steps (automated)
+
+| Step | Action | Code |
+|------|--------|------|
+| 1 | Extract `.zip` → `src/2308.13418/` | `preprocess_pipeline.py` |
+| 2 | Find main `.tex`, copy/rename to `main.tex` | `preprocess_pipeline.py` → `find_main_tex()` |
+| 3 | Clean `.tex` (comments, useless commands) | `patches/preprocess_tex.py` |
+| 4 | Run LaTeXML: `main.tex → html/2308.13418/2308.13418.html` | LaTeXML (external) |
+| 5 | Fix bibliography & citations in HTML from `.bbl` | `patches/fix_bibliography.py`, `patches/fix_citations.py` |
+| 6 | Run pdffigures2: `src/2308.13418.pdf → fig/2308.13418.json` | `pdffigures.py` → pdffigures2 (external) |
+
+> **PDF path**: `split_htmls_to_pages` looks for PDF at `src/2308.13418.pdf` (flat path), **not** inside the extracted directory. The extracted `.tex`/`.bbl` are only used in preprocessing.
+
+#### Output
 
 ```
-python -m nougat.dataset.gen_seek file.jsonl
+data_root/
+├── src/
+│   ├── 2308.13418.pdf
+│   ├── 2308.13418.zip
+│   └── 2308.13418/             ← extracted TeX
+│       ├── main.tex
+│       ├── main.bbl
+│       └── ...
+├── html/
+│   └── 2308.13418/
+│       ├── 2308.13418.html
+│       ├── 2308.13418.xml
+│       └── ...
+└── fig/
+    └── 2308.13418.json
 ```
 
-The resulting directory structure can look as follows:
+### Stage 1: Page alignment (HTML → per-page .mmd / .png)
 
-```
-root/
-├── images
-├── train.jsonl
-├── train.seek.map
-├── test.jsonl
-├── test.seek.map
-├── validation.jsonl
-└── validation.seek.map
+```bash
+python -m nougat.dataset.split_htmls_to_pages \
+    --html  data_root/html \
+    --pdfs  data_root/src \
+    --out   data_root/out \
+    --figure data_root/fig \
+    --markdown data_root/markdown
 ```
 
-Note that the `.mmd` and `.json` files in the `path/paired/output` (here `images`) are no longer required.
-This can be useful for pushing to a S3 bucket by halving the amount of files.
+#### Steps
 
-## Training
+| Step | Action | Code |
+|------|--------|------|
+| 1 | HTML → semantic element tree | `parser/latexml_parser.py` |
+| 2 | Element tree → tagged MMD | `parser/markdown.py` |
+| 3 | Inject figure coordinates into MMD | `patches/inject_coords_to_mmd.py` |
+| 4 | Page alignment (core 5-step algorithm) | `split_md_to_pages.py` + `split_utils/` |
+| 5 | Render PDF pages to PNG | `rasterize.py` |
+| 6 | (Optional) First-page layout correction | `layout_correction.py` + `layout_parser/` |
 
-To train or fine tune a Nougat model, run 
+To enable first-page correction: add `--layout-parser` (requires detectron2 and DiT weights; see [layout_parser/README.md](layout_parser/README.md)).
+
+#### Common options
+
+| Option | Description |
+|--------|-------------|
+| `--recompute` | Recompute all splits |
+| `--markdown DIR` | Save intermediate full MMD (before/after split) |
+| `--workers N` | Number of worker processes |
+| `--dpi N` | Page render resolution (default 96) |
+| `--timeout SEC` | Max time per paper (seconds) |
+| `--layout-parser` | Enable DiT first-page correction (optional) |
+
+#### Output
 
 ```
+data_root/
+├── out/
+│   └── 2308.13418/
+│       ├── 01.mmd
+│       ├── 01.png
+│       ├── 02.mmd
+│       ├── 02.png
+│       └── ...
+└── markdown/                   ← when --markdown is set
+    ├── 2308.13418.mmd
+    └── 2308.13418_processed.mmd
+```
+
+### Final directory layout
+
+After both stages, `data_root/` should look like this:
+
+```
+data_root/
+├── src/                 ← Sources: flat .pdf + extracted TeX dirs
+├── html/                ← LaTeXML HTML
+├── fig/                 ← pdffigures2 JSON
+├── out/                 ← Final per-page .mmd + .png
+└── markdown/            ← (optional) intermediate MMD
+```
+
+---
+
+## Next: index & training
+
+```bash
+# Build training index
+python -m nougat.dataset.create_index --dir data_root/out --out train.jsonl
+python -m nougat.dataset.gen_seek train.jsonl
+
+# Train (upstream Nougat framework)
 python train.py --config config/train_nougat.yaml
 ```
 
-## Evaluation
+---
 
-Run 
+## Using the pretrained model (PDF → Markdown)
 
-```
-python test.py --checkpoint path/to/checkpoint --dataset path/to/test.jsonl --save_path path/to/results.json
-```
+Upstream prediction is unchanged:
 
-To get the results for the different text modalities, run
-
-```
-python -m nougat.metrics path/to/results.json
+```bash
+pip install nougat-ocr
+nougat path/to/file.pdf -o output_directory
 ```
 
-## FAQ
+API: run `nougat_api`, then POST to `http://127.0.0.1:8503/predict/`.
 
-- Why am I only getting `[MISSING_PAGE]`?
+---
 
-  Nougat was trained on scientific papers found on arXiv and PMC. Is the document you're processing similar to that?
-  What language is the document in? Nougat works best with English papers, other Latin-based languages might work. **Chinese, Russian, Japanese etc. will not work**.
-  If these requirements are fulfilled it might be because of false positives in the failure detection, when computing on CPU or older GPUs ([#11](https://github.com/facebookresearch/nougat/issues/11)). Try passing the `--no-skipping` flag for now.
+## Project layout
 
-- Where can I download the model checkpoint from.
+```
+nougat/
+├── nougat/
+│   └── dataset/
+│       ├── preprocess_pipeline.py   ← Stage 0 entry: zip → HTML
+│       ├── split_htmls_to_pages.py  ← Stage 1 entry: HTML → per-page mmd/png
+│       ├── split_md_to_pages.py     ← Page-splitting orchestration
+│       ├── split_utils/             ← Splitting submodules
+│       ├── parser/                  ← HTML → tagged MMD
+│       ├── patches/                 ← TeX preprocessing, citation fixes, coordinate injection
+│       ├── layout_correction.py     ← First-page correction (calls layout_parser)
+│       ├── rasterize.py             ← PDF → PNG
+│       ├── pdffigures.py            ← pdffigures2 wrapper
+│       ├── create_index.py          ← Training index JSONL
+│       └── gen_seek.py              ← Seek map
+├── layout_parser/                   ← DiT layout model (optional)
+├── docs/
+│   └── data_engineering_design.md
+├── setup_env.sh                     ← One-command env setup
+├── setup.py
+└── README.md
+```
 
-  They are uploaded here on GitHub in the release section. You can also download them during the first execution of the program. Choose the preferred preferred model by passing `--model 0.1.0-{base,small}`
+All processing steps are part of the pipeline (no orphan scripts):
+
+- `patches/preprocess_tex.py` → Stage 0 step 3
+- `patches/fix_bibliography.py` + `latex_to_html.py` → Stage 0 step 5
+- `patches/fix_citations.py` → Stage 0 step 5
+- `patches/inject_coords_to_mmd.py` → Stage 1 step 3
+- `layout_correction.py` + `layout_parser/` → Stage 1 step 6 (optional)
+
+---
 
 ## Citation
 
 ```
 @misc{blecher2023nougat,
-      title={Nougat: Neural Optical Understanding for Academic Documents}, 
+      title={Nougat: Neural Optical Understanding for Academic Documents},
       author={Lukas Blecher and Guillem Cucurull and Thomas Scialom and Robert Stojnic},
       year={2023},
       eprint={2308.13418},
@@ -204,12 +259,6 @@ python -m nougat.metrics path/to/results.json
 }
 ```
 
-## Acknowledgments
-
-This repository builds on top of the [Donut](https://github.com/clovaai/donut/) repository.
-
 ## License
 
-Nougat codebase is licensed under MIT.
-
-Nougat model weights are licensed under CC-BY-NC.
+Nougat codebase is licensed under MIT. Nougat model weights are licensed under CC-BY-NC.
