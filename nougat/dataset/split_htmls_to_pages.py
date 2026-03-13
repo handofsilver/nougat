@@ -162,6 +162,31 @@ def process_paper(
         # 生成页面图像（仅保存有内容的页）
         rasterize_paper(pdf_file, outpath, dpi=args.dpi, pages=recognized_indices)
 
+        # 可选：layout_parser 首页修正（详细日志写入数据根目录 layout_correction_logs/<id>.log，不输出到控制台）
+        if getattr(args, "layout_parser", False) and recognized_indices and 0 in recognized_indices:
+            first_page_img = outpath / "01.png"
+            first_page_mmd = outpath / "01.mmd"
+            if first_page_img.exists() and first_page_mmd.exists():
+                try:
+                    from nougat.dataset.layout_correction import try_correct_first_page
+                    data_root = args.out.resolve().parent
+                    layout_log_dir = data_root / "layout_correction_logs"
+                    layout_log_file = layout_log_dir / f"{fname}.log"
+                    original = first_page_mmd.read_text(encoding="utf-8")
+                    corrected = try_correct_first_page(
+                        original,
+                        str(first_page_img),
+                        mmd_file_path=str(first_page_mmd),
+                        log_file_path=str(layout_log_file),
+                    )
+                    if corrected != original:
+                        first_page_mmd.write_text(corrected, encoding="utf-8")
+                        logger.info("[%s] First page corrected by layout_parser (log: %s)", fname, layout_log_file)
+                    else:
+                        logger.debug("[%s] layout_parser ran, no change to 01.mmd (log: %s)", fname, layout_log_file)
+                except Exception as e:
+                    logger.warning("[%s] Layout correction skipped: %s", fname, e)
+
         return total_pages, len(recognized_indices)
 
     except Exception as e:
@@ -292,6 +317,10 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=float, default=120, help="max time per paper in seconds")
     parser.add_argument(
         "--tesseract", action="store_true", help="Tesseract OCR prediction for each page"
+    )
+    parser.add_argument(
+        "--layout-parser", action="store_true", dest="layout_parser",
+        help="Use layout_parser (DiT) for optional first-page tag correction (requires detectron2)"
     )
     args = parser.parse_args()
     print(args)
