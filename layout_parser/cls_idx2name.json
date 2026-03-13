@@ -1,0 +1,102 @@
+{
+ "1": {
+  "name": "文章标题",
+  "backgroundColor": "#78C610",
+  "textColor": "#ffffff"
+ },
+ "2": {
+  "name": "作者",
+  "backgroundColor": "#7CCDD6",
+  "textColor": "#ffffff"
+ },
+ "3": {
+  "name": "正文",
+  "backgroundColor": "#7D2AF6",
+  "textColor": "#ffffff"
+ },
+ "4": {
+  "name": "子标题",
+  "backgroundColor": "#854212",
+  "textColor": "#ffffff"
+ },
+ "5": {
+  "name": "表格",
+  "backgroundColor": "#08B5EC",
+  "textColor": "#ffffff"
+ },
+ "6": {
+  "name": "表格标题",
+  "backgroundColor": "#BDD24C",
+  "textColor": "#ffffff"
+ },
+ "7": {
+  "name": "图片",
+  "backgroundColor": "#43818F",
+  "textColor": "#ffffff"
+ },
+ "8": {
+  "name": "图片标题",
+  "backgroundColor": "#4D1BCA",
+  "textColor": "#ffffff"
+ },
+ "9": {
+  "name": "注释",
+  "backgroundColor": "#0748E7",
+  "textColor": "#ffffff"
+ },
+ "10": {
+  "name": "公式",
+  "backgroundColor": "#E58C20",
+  "textColor": "#ffffff"
+ },
+ "11": {
+  "name": "算法",
+  "backgroundColor": "#5A07E3",
+  "textColor": "#ffffff"
+ },
+ "12": {
+  "name": "参考文献",
+  "backgroundColor": "#5F2328",
+  "textColor": "#ffffff"
+ },
+ "13": {
+  "name": "片段",
+  "backgroundColor": "#766447",
+  "textColor": "#ffffff"
+ },
+ "14": {
+  "name": "表格注释",
+  "backgroundColor": "#BB197A",
+  "textColor": "#ffffff"
+ },
+ "15": {
+  "name": "目录",
+  "backgroundColor": "#3068EB",
+  "textColor": "#ffffff"
+ },
+ "16": {
+  "name": "出处",
+  "backgroundColor": "#93D9E7",
+  "textColor": "#ffffff"
+ },
+ "17": {
+  "name": "其他",
+  "backgroundColor": "#AC443E",
+  "textColor": "#ffffff"
+ },
+ "18": {
+  "name": "副标题",
+  "backgroundColor": "#D39617",
+  "textColor": "#ffffff"
+ },
+ "19": {
+  "name": "日期编号",
+  "backgroundColor": "#459129",
+  "textColor": "#ffffff"
+ },
+ "20": {
+  "name": "公式推导",
+  "backgroundColor": "#946337",
+  "textColor": "#ffffff"
+ }
+}
