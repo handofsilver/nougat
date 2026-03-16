@@ -17,12 +17,13 @@
 
 ### 环境准备（首次操作前执行一次）
 
-- 进入本仓库根目录，并安装依赖（建议使用项目提供的环境）：
+- **环境与依赖**：见项目根目录 **README** 的「快速开始 / setup_env」一节（中英文 README 均已包含 `setup_env.sh` 用法）。
+- 进入本仓库根目录，并安装依赖（若未使用 setup_env，可手动）：
   ```bash
-  cd /home/eliosilver/nougat
-  pip install -e .   # 或以 README / setup_env.sh 为准安装依赖
+  cd /path/to/nougat   # 你的仓库根目录
+  pip install -e .     # 或以 README / setup_env.sh 为准安装依赖
   ```
-- 后续所有「在本仓库根目录执行」的命令，都默认已经 `cd` 到了 `/home/eliosilver/nougat`（或你的仓库路径）。
+- 后续所有「在本仓库根目录执行」的命令，都默认已经 `cd` 到了仓库根目录。
 
 ---
 
@@ -276,7 +277,7 @@ python test.py \
 - 对每张图：`model.encoder.prepare_input(PIL.Image.open(path))` → `model.inference(image_tensors=...)` → 取 `predictions[0]`，可选 `markdown_compatible(...)`，写入 `out_dir/<与输入同名的>.mmd`。
 - 可加 batch 循环以提速（与 `predict.py` 中 LazyDataset 的 batch 类似，但输入为图片路径列表）。
 
-这样即可得到 `data/pred_base/` 与 `data/pred_finetuned/`，再与 `data/test_gt/` 做 NED、公式 Exact Match 等（见《Nougat 模型微调后评测与量化指标生成指南》）。
+这样即可得到 `data/pred_base/` 与 `data/pred_finetuned/`，再与 `data/test_gt/` 做 NED、公式 Exact Match 等（见 [evaluation_results_and_summary.md](evaluation_results_and_summary.md)）。
 
 ### 6.3 推理失败排查（No samples were evaluated / Some weights were not initialized）
 
@@ -340,7 +341,7 @@ python train.py --config config/train_nougat_my.yaml
 ### 7.3 输出与后续
 
 - 权重与日志会落在 `result_path/exp_name/exp_version/`（如 `result_path/nougat_finetune/v1/`）。
-- 最佳 checkpoint 由 `ModelCheckpoint` 的 `monitor="val/edit_dist"` 决定；评测时用该 checkpoint 作为「微调后模型」，做批量推理并与 baseline 对比（见《Nougat 模型微调后评测与量化指标生成指南》）。
+- 最佳 checkpoint 由 `ModelCheckpoint` 的 `monitor="val/edit_dist"` 决定；评测时用该 checkpoint 作为「微调后模型」，做批量推理并与 baseline 对比（见 [evaluation_results_and_summary.md](evaluation_results_and_summary.md)）。
 
 ---
 
@@ -356,6 +357,6 @@ python train.py --config config/train_nougat_my.yaml
 | 6 | root_name | 训练/测试时 `root_name=""`，保证图片路径 = base_dir + image |
 | 7 | 推理 | 用 test.py 或自写「图片→mmd」脚本，得到 pred_base / pred_finetuned |
 | 8 | 微调 | 修改 config → `train.py --config ...` |
-| 9 | 评测 | 按《Nougat 模型微调后评测与量化指标生成指南》做 NED、公式 Exact Match 等 |
+| 9 | 评测 | 按 [evaluation_results_and_summary.md](evaluation_results_and_summary.md) 做 NED、公式 Exact Match 等 |
 
 按上述顺序执行即可从 base_dir 跑通推理与微调，并预留测试集用于最终量化评测。

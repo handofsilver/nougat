@@ -116,9 +116,40 @@ preds = self.model.inference(image_tensors=..., return_attentions=False)["predic
 
 ---
 
-## 六、具体操作（复现与后续使用）
+## 六、训练注意：早停与学习率
 
-### 6.1 训练（验证只算 loss、多存 ckpt）
+若最佳 val/loss 出现在早期 epoch（如 epoch 1），早停后主观感觉指令遵循/任务适应尚未充分，可参考以下原因与改法。
+
+**现象**：最佳 val/loss 出现在 **epoch 1**（即只经过约 2 个 epoch 的有效训练），之后连续若干 epoch 无提升即早停。
+
+**可能原因**：
+
+1. **学习率偏大**：如 `lr: 5e-5` 在有效 batch 较大（如 36/72）时，前期 loss 掉得快，易过早进入平坦区或局部最优，val/loss 不再明显下降；模型还未在“任务格式/指令”上充分收敛即被早停。
+2. **早停 patience 偏小**：如 `early_stopping_patience: 5` 时，最佳若出现在 epoch 1，后面 5 个 epoch 不提升就停，可训练轮数偏少。
+3. **验证集噪声或规模**：每 epoch 只验证 1 次时，val/loss 可能波动；早期偶然较低易触发早停。可考虑适当增大 `val_check_interval` 或多看几轮再判断，但优先先调 lr 与 patience。
+4. **warmup 与衰减**：衰减较慢时，主要矛盾更可能在「初始 lr 偏大」而非衰减形状。
+
+**建议（按优先级）**：
+
+1. **降低学习率重训一版**：在 `config/train_nougat_my.yaml` 中把 `lr` 改为 **3e-5**（或 2e-5），用新版本号避免覆盖：`python train.py --config config/train_nougat_my.yaml --exp_version v2`。预期 loss 下降更平滑，最优可能出现在更晚的 epoch。
+2. **增大早停耐心**：配置中设 `early_stopping_patience: 10`，与较低 lr 配合，让训练多跑几轮再停。
+3. **可选**：略降 `min_lr`（如从 7.5e-6 改为 5e-6），给后期留一点学习空间；非必须，先改 lr 即可。
+
+**重训 v2 配置变更小结**：
+
+| 配置项 | v1（示例） | v2 建议 | 说明 |
+|--------|------------|--------|------|
+| lr | 5e-5 | **3e-5** | 减缓前期下降、多训几轮再收敛 |
+| early_stopping_patience | 5 | **10** | 避免过早停在“第二个 epoch 就最优” |
+| exp_version | v1 | **v2** | 用 `--exp_version v2` 或 yaml 中改，不覆盖 v1 |
+
+其余（batch、accumulate、max_length、数据路径等）可保持不变。若 v2 仍感觉指令遵循不足，可再试 lr=2e-5 或略增 warmup_steps。
+
+---
+
+## 七、具体操作（复现与后续使用）
+
+### 7.1 训练（验证只算 loss、多存 ckpt）
 
 ```bash
 cd /root/autodl-tmp/nougat
@@ -134,7 +165,7 @@ python train.py --config config/train_nougat_my.yaml
   - `last.ckpt`
   - 最多 5 个按 val/loss 最优的 `epoch=XX-val_loss=0.xxxx.ckpt`
 
-### 6.2 用某一 checkpoint 做测试集推理
+### 7.2 用某一 checkpoint 做测试集推理
 
 ```bash
 export BASE_DIR=/root/autodl-tmp/ocr_data
@@ -152,17 +183,17 @@ python test.py \
 
 （若 test.py 支持从 ckpt 自动加载权重，则上述方式有效；若当前实现只支持“目录形式”的 checkpoint，则需先从 ckpt 中导出权重到目录再指向该目录，可后续再补脚本。）
 
-### 6.3 若希望训练过程中偶尔看生成指标
+### 7.3 若希望训练过程中偶尔看生成指标
 
 - 可将 `val_with_generation` 设为 `true`，并适当减小验证量（例如 `val_batches: 0.1`，只验证 10% 的验证集），这样每轮会慢一些但仍有 BLEU/edit_dist；或保持 `val_with_generation: false`，仅在需要时手动跑一次验证集上的 test.py 做生成评测。
 
 ---
 
-## 七、文档与配置变更索引
+## 八、文档与配置变更索引
 
 | 文档/配置 | 说明 |
 |-----------|------|
-| 本文档 | `docs/微调验证与checkpoint优化复盘.md`：诊断、修改、影响、操作。 |
+| 本文档 | `docs/validation_and_checkpoint_notes.md`：诊断、修改、影响、操作。 |
 | `config/train_nougat_my.yaml` | `val_with_generation: false`、`save_top_k: 5`。 |
 | `lightning_module.py` | `validation_step` 在 `val_with_generation=false` 时只算 val/loss。 |
 | `train.py` | checkpoint 的 monitor/filename 随 `val_with_generation` 切换；`save_top_k` 从 config 读取。 |

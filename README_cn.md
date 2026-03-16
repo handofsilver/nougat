@@ -206,7 +206,7 @@ python -m nougat.dataset.gen_seek data_root/train.jsonl data_root/validation.jso
 
 # 4. 下载基座模型（须用 GitHub 0.1.0-base，与 HuggingFace 格式不兼容）并导出训练用权重
 python -m nougat.utils.checkpoint base /path/to/nougat-base
-# 再导出 aligned_model_weights.pth（见 docs/从base_dir到推理与微调全流程操作指南.md）
+# 再导出 aligned_model_weights.pth（见 docs/pipeline_and_training_guide.md）
 
 # 5. 微调（配置：config/train_nougat_my.yaml；val_with_generation=false 可大幅加快验证）
 python train.py --config config/train_nougat_my.yaml
@@ -218,11 +218,11 @@ python test.py --checkpoint /path/to/nougat-base --dataset data_root/test.jsonl 
 python scripts/evaluate.py --base data_root/test_results_base.json --finetuned data_root/test_results_finetuned.json
 ```
 
-**本 fork 训练相关修改**：验证可仅算 loss（配置中 `val_with_generation: false`），避免每轮对全量验证集做生成；checkpoint 按 `val/loss` 保留 **top-k**；推理使用 `repetition_penalty` 与可配置 `max_new_tokens`。详见 **docs/微调验证与checkpoint优化复盘.md**。
+**本 fork 训练相关修改**：验证可仅算 loss（配置中 `val_with_generation: false`），避免每轮对全量验证集做生成；checkpoint 按 `val/loss` 保留 **top-k**；推理使用 `repetition_penalty` 与可配置 `max_new_tokens`。详见 **docs/validation_and_checkpoint_notes.md**。
 
 **脚本**：`scripts/stats_page_tokens.py` — 统计每页 token 数，用于设定 `max_new_tokens`；`scripts/evaluate.py` — 对 `test_results_*.json` 做 NED、公式匹配、BLEU。  
 
-完整步骤（路径、环境、命令）：**docs/从base_dir到推理与微调全流程操作指南.md**。
+完整步骤（路径、环境、命令）：**docs/pipeline_and_training_guide.md**。
 
 ---
 
@@ -231,14 +231,10 @@ python scripts/evaluate.py --base data_root/test_results_base.json --finetuned d
 | 文档 / 脚本 | 用途 |
 |-------------|------|
 | **docs/data_engineering_design.md** | 数据流水线完整设计（TeX→HTML→MMD→分页对齐、语义标签、layout_parser）。 |
-| **docs/从base_dir到推理与微调全流程操作指南.md** | 端到端：模型下载、索引/划分/seek、推理与微调命令。 |
-| **docs/当前配置与运行要点总览.md** | 环境、路径、训练配置、token 统计、推理参数。 |
-| **docs/Nougat 模型微调后评测与量化指标生成指南.md** | 评测蓝图：双轨推理、清洗、NED/公式/BLEU、简历话术。 |
-| **docs/推理输入输出与JSON格式说明.md** | test.jsonl、test_results_*.json 来源、生成命令、JSON 结构。 |
-| **docs/推理与微调结果评估总结.md** | 数据与 baseline/微调输出差异、评测方案与结果。 |
-| **docs/推理结果评估方向与格式核对.md** | 格式差异、统一清洗、指标定义。 |
-| **docs/微调验证与checkpoint优化复盘.md** | 验证极慢原因；val_with_generation、save_top_k、repetition_penalty。 |
-| **docs/第一次推理与训练完成日志.md** | 首次跑通日志与现象记录。 |
+| **docs/pipeline_and_training_guide.md** | 端到端：模型下载、索引/划分/seek、推理与微调命令（环境见 README setup_env）。 |
+| **docs/inference_io_and_json_format.md** | test.jsonl、test_results_*.json 来源、生成命令、JSON 结构。 |
+| **docs/evaluation_results_and_summary.md** | 数据与 baseline/微调输出差异、评测方案、结果与简历话术。 |
+| **docs/validation_and_checkpoint_notes.md** | 验证极慢原因；val_with_generation、save_top_k、repetition_penalty；早停与学习率。 |
 | **scripts/evaluate.py** | 离线评测：文本规范化、NED、公式精确匹配、BLEU；单文件或 base vs 微调对比。 |
 | **scripts/stats_page_tokens.py** | 按页统计 token 数（train.jsonl），用于设定 max_new_tokens。 |
 
@@ -280,7 +276,11 @@ nougat/
 │   ├── README.md
 │   └── ...
 ├── docs/
-│   └── data_engineering_design.md   ← 完整技术设计文档
+│   ├── data_engineering_design.md   ← 完整技术设计文档
+│   ├── pipeline_and_training_guide.md
+│   ├── inference_io_and_json_format.md
+│   ├── evaluation_results_and_summary.md
+│   └── validation_and_checkpoint_notes.md
 ├── setup_env.sh                     ← 一键环境配置
 ├── setup.py
 └── README.md                        ← 本文件

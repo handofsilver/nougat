@@ -201,7 +201,7 @@ python -m nougat.dataset.gen_seek data_root/train.jsonl data_root/validation.jso
 
 # 4. Download base model (use GitHub 0.1.0-base, not HuggingFace) and export for training
 python -m nougat.utils.checkpoint base /path/to/nougat-base
-# then export aligned_model_weights.pth (see docs/从base_dir到推理与微调全流程操作指南.md)
+# then export aligned_model_weights.pth (see docs/pipeline_and_training_guide.md)
 
 # 5. Train (config: config/train_nougat_my.yaml; val_with_generation=false for fast validation)
 python train.py --config config/train_nougat_my.yaml
@@ -213,11 +213,11 @@ python test.py --checkpoint /path/to/nougat-base --dataset data_root/test.jsonl 
 python scripts/evaluate.py --base data_root/test_results_base.json --finetuned data_root/test_results_finetuned.json
 ```
 
-**Training changes in this fork:** validation can be **loss-only** (`val_with_generation: false` in config) to avoid slow per-epoch generation; checkpoint keeps **top-k** by `val/loss`; inference uses `repetition_penalty` and configurable `max_new_tokens`. See `docs/微调验证与checkpoint优化复盘.md` for details.
+**Training changes in this fork:** validation can be **loss-only** (`val_with_generation: false` in config) to avoid slow per-epoch generation; checkpoint keeps **top-k** by `val/loss`; inference uses `repetition_penalty` and configurable `max_new_tokens`. See `docs/validation_and_checkpoint_notes.md` for details.
 
 **Scripts:** `scripts/stats_page_tokens.py` — token stats per page for choosing `max_new_tokens`; `scripts/evaluate.py` — NED, formula match, BLEU on `test_results_*.json`.
 
-Full step-by-step (paths, env, commands): **docs/从base_dir到推理与微调全流程操作指南.md**.
+Full step-by-step (paths, env, commands): **docs/pipeline_and_training_guide.md**.
 
 ---
 
@@ -226,14 +226,10 @@ Full step-by-step (paths, env, commands): **docs/从base_dir到推理与微调�
 | Doc / script | Purpose |
 |--------------|--------|
 | **docs/data_engineering_design.md** | Full data-pipeline design (TeX→HTML→MMD→page alignment, tags, layout_parser). |
-| **docs/从base_dir到推理与微调全流程操作指南.md** | End-to-end: model download, index/split/seek, inference, fine-tuning commands. |
-| **docs/当前配置与运行要点总览.md** | Env, paths, train config, token stats, inference settings. |
-| **docs/Nougat 模型微调后评测与量化指标生成指南.md** | Evaluation blueprint: dual-run inference, cleaning, NED/formula/BLEU, resume wording. |
-| **docs/推理输入输出与JSON格式说明.md** | test.jsonl, test_results_*.json sources, commands, JSON layout. |
-| **docs/推理与微调结果评估总结.md** | Data vs baseline/finetuned output, evaluation plan and results. |
-| **docs/推理结果评估方向与格式核对.md** | Format differences, unified cleaning, metric definitions. |
-| **docs/微调验证与checkpoint优化复盘.md** | Why validation was slow; val_with_generation, save_top_k, repetition_penalty. |
-| **docs/第一次推理与训练完成日志.md** | First-run log and notes. |
+| **docs/pipeline_and_training_guide.md** | End-to-end: model download, index/split/seek, inference, fine-tuning commands (env: see README setup_env). |
+| **docs/inference_io_and_json_format.md** | test.jsonl, test_results_*.json sources, commands, JSON layout. |
+| **docs/evaluation_results_and_summary.md** | Data vs baseline/finetuned output, evaluation plan, results, resume wording. |
+| **docs/validation_and_checkpoint_notes.md** | Why validation was slow; val_with_generation, save_top_k, repetition_penalty; early stopping and learning rate. |
 | **scripts/evaluate.py** | Offline eval: normalize text, NED, formula exact match, BLEU; single file or base vs finetuned. |
 | **scripts/stats_page_tokens.py** | Token counts per page (train.jsonl) for max_new_tokens tuning. |
 
@@ -273,7 +269,11 @@ nougat/
 ├── scripts/                         ← evaluate.py, stats_page_tokens.py
 ├── layout_parser/                   ← DiT layout model (optional)
 ├── docs/
-│   └── data_engineering_design.md
+│   ├── data_engineering_design.md
+│   ├── pipeline_and_training_guide.md
+│   ├── inference_io_and_json_format.md
+│   ├── evaluation_results_and_summary.md
+│   └── validation_and_checkpoint_notes.md
 ├── setup_env.sh                     ← One-command env setup
 ├── setup.py
 └── README.md
