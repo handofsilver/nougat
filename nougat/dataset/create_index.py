@@ -64,16 +64,26 @@ def index_paper(directory: Path, args: argparse.Namespace):
     Pack all image-text pairs into a single h5 file and save it at `args.out`
     """
     paper = directory.name
-    markdowns = directory.glob("*.mmd")
+    markdowns = sorted(directory.glob("*.mmd"), key=lambda p: int(p.stem) if p.stem.isdigit() else 0)
     meta_file = directory / "meta.json"
     data_samples = []
-    if not meta_file.exists():
-        return
-    # load meta info
-    try:
-        meta = read_metadata(json.load(meta_file.open("r", encoding="utf-8")))
-    except json.JSONDecodeError:
-        return
+    meta = None
+    if meta_file.exists():
+        raw = meta_file.read_text(encoding="utf-8").strip()
+        if raw:
+            try:
+                meta = read_metadata(json.loads(raw))
+            except (json.JSONDecodeError, KeyError):
+                pass
+    if meta is None:
+        # 无 meta 或无效/空 meta 时：用最大页码推断 num_pages，空 meta 列表
+        if not markdowns:
+            return None
+        try:
+            n = max(int(p.stem) for p in markdowns if p.stem.isdigit())
+        except ValueError:
+            n = len(markdowns)
+        meta = [[] for _ in range(n)]
 
     for md_path in markdowns:
         image = md_path.parent / (md_path.stem + ".png")

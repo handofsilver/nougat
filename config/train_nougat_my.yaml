@@ -1,0 +1,55 @@
+# 推理与微调统一使用 GitHub Release 0.1.0-base（见文档：python -m nougat.utils.checkpoint base $MODEL_DIR）
+# 当前为高配服务器配置（原 4090 24G 为 train_batch_sizes=1, val_batch_sizes=1, accumulate_grad_batches=8, val_check_interval=800）
+resume_from_checkpoint_path: null
+result_path: "/data/yanshiqi/nougat_exp/"
+model_path: "/data/yanshiqi/models/nougat-base"
+pretrained_weight_path: "/data/yanshiqi/models/nougat-base/aligned_model_weights.pth"
+train_dataset_paths: ["/data/yanshiqi/ocr_data/train.jsonl"]
+val_dataset_paths: ["/data/yanshiqi/ocr_data/validation.jsonl"]
+tokenizer: "/data/yanshiqi/models/nougat-base/tokenizer.json"
+root_name: ""
+exp_name: "nougat_finetune"
+exp_version: "v3"
+# 80G 显存：每卡 batch 6（卡1 约 44G 占用时仍有 ~37G 余量，可试 6）；单卡有效 batch=36，2 卡=72
+train_batch_sizes: [6]
+num_workers: 16
+val_batch_sizes: [6]
+val_batches: 1.0
+# 验证阶段不跑自回归生成，只算 val/loss，避免每 epoch 数千次 generate 导致极慢
+val_with_generation: false
+# 除 last.ckpt 外，按 val/loss 保留最优的 N 个 checkpoint，便于后续选不同 epoch 做评测
+save_top_k: 5
+input_size: [896, 672]
+# 2048 与官方/原 4090 配置一致；4096 会使 decoder attention 显存约 4 倍，易 OOM
+max_length: 2048
+max_position_embeddings: 4096
+# 有效 batch：单卡 6×6=36，2 卡 6×2×6=72（略大于原 32，lr 可不动或略降；若 OOM 改回 4+4）
+accumulate_grad_batches: 6
+window_size: 7
+patch_size: 4
+embed_dim: 128
+hidden_dimension: 1024
+num_heads: [4, 8, 16, 32]
+encoder_layer: [2, 2, 14, 2]
+decoder_layer: 10
+align_long_axis: False
+num_nodes: 1
+seed: 25
+# v1 用 5e-5 最佳出现在 epoch 1 即停，指令遵循不足；v2 重训建议用 3e-5 多训几轮
+lr: 1e-5
+min_lr: 3e-6
+lr_step: 16
+gamma: 0.9996
+warmup_steps: 250
+# 与当前 train.jsonl 样本数一致（约 26607）
+num_training_samples_per_epoch: 26607
+max_epochs: 30
+max_steps: -1
+# 早停：val/loss 连续 N 个 epoch 不提升则停止；5 易在 epoch 1 最优时很快停，重训可改为 8 或 10
+early_stopping_patience: 15
+# 高配：原 4090 为 800（每 epoch 验证约 26 次，占 2/3 时间）；改为 1.0 每 epoch 只验证 1 次，大幅缩短
+val_check_interval: 1.0
+check_val_every_n_epoch: 1
+gradient_clip_val: 0.5
+verbose: False
+debug: True

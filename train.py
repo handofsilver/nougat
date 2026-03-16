@@ -13,6 +13,7 @@ from pathlib import Path
 import torch
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import (
+    EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
     Callback,
@@ -159,6 +160,7 @@ def train(config):
                 nougat_model=model_module.model,
                 max_length=config.max_length,
                 split="train",
+                root_name=config.get("root_name", "arxiv"),
             )
         )
 
@@ -172,6 +174,7 @@ def train(config):
                 nougat_model=model_module.model,
                 max_length=config.max_length,
                 split="validation",
+                root_name=config.get("root_name", "arxiv"),
             )
         )
 
@@ -183,22 +186,54 @@ def train(config):
 
     lr_callback = LearningRateMonitor(logging_interval="step")
 
+    val_with_gen = config.get("val_with_generation", True)
+    save_top_k = config.get("save_top_k", 5)  # 保留最优的 N 个 ckpt，便于后续选不同 epoch 做评测
     checkpoint_callback = ModelCheckpoint(
-        save_last=True,  # 保存最后一个模型，文件名为 last.ckpt
+        save_last=True,
         dirpath=Path(config.result_path) /
         config.exp_name / config.exp_version,
-        save_top_k=1,    # 只保存最好的1个模型
-        monitor="val/edit_dist",  # 监控我们确认过的指标：验证集编辑距离
-        mode="min",      # 编辑距离越小越好，所以模式是 "min"
-        filename="{epoch:02d}-{val_edit_dist:.4f}",  # 最佳模型的文件名（使用下划线，避免非法字符）
+        save_top_k=save_top_k,
+        monitor="val/loss" if not val_with_gen else "val/edit_dist",
+        mode="min",
+        filename="{epoch:02d}-{val_loss:.4f}" if not val_with_gen else "{epoch:02d}-{val_edit_dist:.4f}",
     )
 
     grad_norm_callback = GradNormCallback()
     custom_ckpt = CustomCheckpointIO()
 
+    # 早停：val/loss 连续 patience 个 epoch 无提升则停止，节省算力（0=关闭）
+    callbacks_list = [
+        lr_callback,
+        grad_norm_callback,
+        checkpoint_callback,
+        GradientAccumulationScheduler({0: config.accumulate_grad_batches}),
+    ]
+    early_stop_patience = config.get("early_stopping_patience", 0)
+    if early_stop_patience > 0:
+        callbacks_list.append(
+            EarlyStopping(
+                monitor="val/loss" if not val_with_gen else "val/edit_dist",
+                mode="min",
+                patience=early_stop_patience,
+                verbose=True,
+            )
+        )
+
+    # 选择合适的 Logger：
+    # - 若 Logger 是 WandbLogger，则使用 project/config 参数
+    # - 若 Logger 是 TensorBoardLogger，则使用 save_dir/name/version 形式
     if not config.debug:
-        logger = Logger(config.exp_name, project="Nougat", config=dict(config))
+        if getattr(Logger, "__name__", "") == "WandbLogger":
+            logger = Logger(config.exp_name, project="Nougat", config=dict(config))
+        else:
+            logger = Logger(
+                save_dir=config.result_path,
+                name=config.exp_name,
+                version=config.exp_version,
+                default_hp_metric=False,
+            )
     else:
+        from lightning.pytorch.loggers.tensorboard import TensorBoardLogger
         logger = TensorBoardLogger(
             save_dir=config.result_path,
             name=config.exp_name,
@@ -221,12 +256,7 @@ def train(config):
         precision="bf16-mixed",
         num_sanity_val_steps=0,
         logger=logger,
-        callbacks=[
-            lr_callback,
-            grad_norm_callback,
-            checkpoint_callback,
-            GradientAccumulationScheduler({0: config.accumulate_grad_batches}),
-        ],
+        callbacks=callbacks_list,
     )
 
     trainer.fit(
@@ -250,10 +280,11 @@ if __name__ == "__main__":
     config.job = args.job
     if not config.get("exp_name", False):
         config.exp_name = basename(args.config).split(".")[0]
+    # 优先级：命令行 --exp_version > config 里 exp_version > 时间戳（避免每次启动都新建目录）
     config.exp_version = (
-        datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        if not args.exp_version
-        else args.exp_version
+        args.exp_version
+        if args.exp_version
+        else (config.get("exp_version") or datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     )
 
     save_config_file(

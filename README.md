@@ -185,16 +185,57 @@ data_root/
 
 ---
 
-## Next: index & training
+## Index, split, training & evaluation (this fork)
+
+After Stage 0–1 you have `data_root/out/` with per-page `.mmd` and `.png`. Build the index, **split by paper** into train/val/test, then train and evaluate.
 
 ```bash
-# Build training index
-python -m nougat.dataset.create_index --dir data_root/out --out train.jsonl
-python -m nougat.dataset.gen_seek train.jsonl
+# 1. Index all pages
+python -m nougat.dataset.create_index --dir data_root/out --root data_root --out data_root/all_pages.jsonl
 
-# Train (upstream Nougat framework)
-python train.py --config config/train_nougat.yaml
+# 2. Split by paper_id (train/val/test)
+python -m nougat.dataset.split_train_val_test --input data_root/all_pages.jsonl --out_dir data_root --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
+
+# 3. Seek maps for training
+python -m nougat.dataset.gen_seek data_root/train.jsonl data_root/validation.jsonl data_root/test.jsonl
+
+# 4. Download base model (use GitHub 0.1.0-base, not HuggingFace) and export for training
+python -m nougat.utils.checkpoint base /path/to/nougat-base
+# then export aligned_model_weights.pth (see docs/从base_dir到推理与微调全流程操作指南.md)
+
+# 5. Train (config: config/train_nougat_my.yaml; val_with_generation=false for fast validation)
+python train.py --config config/train_nougat_my.yaml
+
+# 6. Inference on test set
+python test.py --checkpoint /path/to/nougat-base --dataset data_root/test.jsonl --split test --save_path data_root/test_results_base.json --root_name ""
+
+# 7. Offline evaluation (NED, formula exact match, BLEU)
+python scripts/evaluate.py --base data_root/test_results_base.json --finetuned data_root/test_results_finetuned.json
 ```
+
+**Training changes in this fork:** validation can be **loss-only** (`val_with_generation: false` in config) to avoid slow per-epoch generation; checkpoint keeps **top-k** by `val/loss`; inference uses `repetition_penalty` and configurable `max_new_tokens`. See `docs/微调验证与checkpoint优化复盘.md` for details.
+
+**Scripts:** `scripts/stats_page_tokens.py` — token stats per page for choosing `max_new_tokens`; `scripts/evaluate.py` — NED, formula match, BLEU on `test_results_*.json`.
+
+Full step-by-step (paths, env, commands): **docs/从base_dir到推理与微调全流程操作指南.md**.
+
+---
+
+## Docs and scripts index
+
+| Doc / script | Purpose |
+|--------------|--------|
+| **docs/data_engineering_design.md** | Full data-pipeline design (TeX→HTML→MMD→page alignment, tags, layout_parser). |
+| **docs/从base_dir到推理与微调全流程操作指南.md** | End-to-end: model download, index/split/seek, inference, fine-tuning commands. |
+| **docs/当前配置与运行要点总览.md** | Env, paths, train config, token stats, inference settings. |
+| **docs/Nougat 模型微调后评测与量化指标生成指南.md** | Evaluation blueprint: dual-run inference, cleaning, NED/formula/BLEU, resume wording. |
+| **docs/推理输入输出与JSON格式说明.md** | test.jsonl, test_results_*.json sources, commands, JSON layout. |
+| **docs/推理与微调结果评估总结.md** | Data vs baseline/finetuned output, evaluation plan and results. |
+| **docs/推理结果评估方向与格式核对.md** | Format differences, unified cleaning, metric definitions. |
+| **docs/微调验证与checkpoint优化复盘.md** | Why validation was slow; val_with_generation, save_top_k, repetition_penalty. |
+| **docs/第一次推理与训练完成日志.md** | First-run log and notes. |
+| **scripts/evaluate.py** | Offline eval: normalize text, NED, formula exact match, BLEU; single file or base vs finetuned. |
+| **scripts/stats_page_tokens.py** | Token counts per page (train.jsonl) for max_new_tokens tuning. |
 
 ---
 
@@ -227,7 +268,9 @@ nougat/
 │       ├── rasterize.py             ← PDF → PNG
 │       ├── pdffigures.py            ← pdffigures2 wrapper
 │       ├── create_index.py          ← Training index JSONL
+│       ├── split_train_val_test.py  ← Train/val/test split by paper_id
 │       └── gen_seek.py              ← Seek map
+├── scripts/                         ← evaluate.py, stats_page_tokens.py
 ├── layout_parser/                   ← DiT layout model (optional)
 ├── docs/
 │   └── data_engineering_design.md

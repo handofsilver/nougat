@@ -77,11 +77,18 @@ class NougatModelPLModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataset_idx=0):
-        # print(79, '验证步骤')
         if batch is None:
             return
-        image_tensors, decoder_input_ids, _ = batch
+        image_tensors, decoder_input_ids, attention_masks = batch
         if image_tensors is None:
+            return
+        # 可选：验证阶段只算 loss（Teacher Forcing），不跑自回归生成，避免每 epoch 对全量验证集做 2836 次 generate
+        if not self.config.get("val_with_generation", True):
+            loss = self.model(image_tensors, decoder_input_ids, attention_masks)[0]
+            if loss is not None:
+                scores = {"val/loss": loss.item()}
+                self.validation_step_outputs.append(scores)
+                return scores
             return
         markdown = pad_sequence(
             decoder_input_ids,
@@ -94,13 +101,10 @@ class NougatModelPLModule(pl.LightningModule):
         gts = self.model.decoder.tokenizer.batch_decode(
             markdown, skip_special_tokens=True
         )
-        # print('96 真实标签 lighting_module ', gts[:800])
-        # print('97 预测结果 lighting_module', preds[:800])
         metrics = get_metrics(gts, preds, pool=False)
         scores = {
             "val/" + key: sum(values) / len(values) for key, values in metrics.items()
         }
-        # print(100, scores)
         self.validation_step_outputs.append(scores)
         return scores
 
@@ -245,6 +249,7 @@ class NougatDataPLModule(pl.LightningDataModule):
             DataLoader(
                 torch.utils.data.ConcatDataset(self.val_datasets),
                 batch_size=self.val_batch_sizes[0],
+                num_workers=getattr(self.config, "num_workers", 0),
                 pin_memory=True,
                 shuffle=False,
                 collate_fn=self.ignore_none_collate,
@@ -261,11 +266,13 @@ class NougatDataPLModule(pl.LightningDataModule):
     @staticmethod
     def ignore_none_collate(batch):
         if batch is None:
-            return
+            return None
         try:
             batch = [x for x in batch if x is not None and x[0] is not None]
             if len(batch) == 0:
-                return
+                return None
             return torch.utils.data.dataloader.default_collate(batch)
-        except AttributeError:
-            pass
+        except Exception as e:
+            import logging
+            logging.warning("ignore_none_collate failed: %s", e)
+            return None

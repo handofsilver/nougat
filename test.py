@@ -4,11 +4,12 @@ Copyright (c) 2022-present NAVER Corp.
 MIT License
 Copyright (c) Meta Platforms, Inc. and affiliates.
 """
+import os
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import argparse
 import json
-import os
 import logging
-from multiprocessing import Pool
 from collections import defaultdict
 from pathlib import Path
 
@@ -27,40 +28,51 @@ from lightning_module import NougatDataPLModule
 def test(args):
     pretrained_model = NougatModel.from_pretrained(args.checkpoint)
     pretrained_model = move_to_device(pretrained_model)
-
     pretrained_model.eval()
 
     if args.save_path:
-        os.makedirs(os.path.dirname(args.save_path), exist_ok=True)
+        os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
     else:
         logging.warning("Results can not be saved. Please provide a -o/--save_path")
+
     predictions = []
     ground_truths = []
     metrics = defaultdict(list)
+
     dataset = NougatDataset(
         dataset_path=args.dataset,
         nougat_model=pretrained_model,
         max_length=pretrained_model.config.max_length,
         split=args.split,
+        root_name=args.root_name,
+    )
+
+    # path_to_root = jsonl 所在目录（即 BASE_DIR）；root_name 默认为 ""，图片路径 = path_to_root / root_name / image
+    sd = dataset.dataset
+    path_to_root = sd.path_to_root
+    root_name = sd.root_name or ""
+    logging.info(
+        "Dataset: path_to_root=%s, root_name=%r, len=%d",
+        path_to_root, root_name, len(dataset),
     )
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
-        num_workers=6,
-        pin_memory=True,
+        num_workers=args.num_workers,
+        pin_memory=(args.num_workers > 0),
         shuffle=args.shuffle,
         collate_fn=NougatDataPLModule.ignore_none_collate,
     )
 
-    for idx, sample in tqdm(enumerate(dataloader), total=len(dataloader)):
+    def run_one_batch(sample, batch_idx):
         if sample is None:
-            continue
+            return
         image_tensors, decoder_input_ids, _ = sample
         if image_tensors is None:
             return
-        if len(predictions) >= args.num_samples:
-            break
+        if args.num_samples > 0 and len(predictions) >= args.num_samples:
+            return
         ground_truth = pretrained_model.decoder.tokenizer.batch_decode(
             decoder_input_ids, skip_special_tokens=True
         )
@@ -70,29 +82,73 @@ def test(args):
         )["predictions"]
         predictions.extend(outputs)
         ground_truths.extend(ground_truth)
-        with Pool(args.batch_size) as p:
-            _metrics = p.starmap(compute_metrics, iterable=zip(outputs, ground_truth))
-            for m in _metrics:
-                for key, value in m.items():
-                    metrics[key].append(value)
+        # 在主进程内逐条计算 metrics，避免 multiprocessing.Pool 与 CUDA/fork 冲突
+        for pred, gt in zip(outputs, ground_truth):
+            m = compute_metrics(pred, gt)
+            for key, value in m.items():
+                metrics[key].append(value)
 
-            print({key: sum(values) / len(values) for key, values in metrics.items()})
+    def save_results(path: str, preds: list, gts: list, m: dict):
+        """写当前 predictions/ground_truths/metrics 到 JSON，便于查看中间结果或断点续跑."""
+        if not path or not preds:
+            return
+        out = {}
+        for metric, vals in m.items():
+            out[f"{metric}_accuracies"] = vals
+            out[f"{metric}_accuracy"] = np.mean(vals) if vals else np.nan
+        out["predictions"] = preds
+        out["ground_truths"] = gts
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+
+    save_every = getattr(args, "save_every", 0)
+
+    for idx, sample in tqdm(enumerate(dataloader), total=len(dataloader)):
+        if sample is None:
+            if idx == 0:
+                logging.warning(
+                    "Batch %d is None (all samples skipped). "
+                    "Ensure images exist at path_to_root + root_name + image; "
+                    "e.g. use --root_name \"\" when data is in base_dir/out/.",
+                    idx,
+                )
+            continue
+        run_one_batch(sample, idx)
+        if save_every > 0 and args.save_path and (idx + 1) % save_every == 0:
+            save_results(args.save_path, predictions, ground_truths, metrics)
+            logging.info("Saved intermediate results: %d samples -> %s", len(predictions), args.save_path)
+        if args.num_samples > 0 and len(predictions) >= args.num_samples:
+            break
 
     scores = {}
     for metric, vals in metrics.items():
         scores[f"{metric}_accuracies"] = vals
-        scores[f"{metric}_accuracy"] = np.mean(vals)
-    try:
-        print(
-            f"Total number of samples: {len(vals)}, Edit Distance (ED) based accuracy score: {scores['edit_dist_accuracy']}, BLEU score: {scores['bleu_accuracy']}, METEOR score: {scores['meteor_accuracy']}"
+        scores[f"{metric}_accuracy"] = np.mean(vals) if vals else np.nan
+
+    if len(predictions) == 0:
+        logging.warning(
+            "No samples were evaluated. All batches were skipped. "
+            "Ensure images exist at path_to_root + root_name + image (e.g. use --root_name \"\" when data is in base_dir/out/)."
         )
-    except:
-        pass
+    else:
+        try:
+            print(
+                "Total number of samples: %d, Edit Distance (ED) based accuracy score: %s, BLEU score: %s, METEOR score: %s"
+                % (
+                    len(predictions),
+                    scores.get("edit_dist_accuracy", "N/A"),
+                    scores.get("bleu_accuracy", "N/A"),
+                    scores.get("meteor_accuracy", "N/A"),
+                )
+            )
+        except Exception:
+            pass
+
     if args.save_path:
         scores["predictions"] = predictions
         scores["ground_truths"] = ground_truths
-        with open(args.save_path, "w") as f:
-            json.dump(scores, f)
+        with open(args.save_path, "w", encoding="utf-8") as f:
+            json.dump(scores, f, ensure_ascii=False, indent=2)
 
     return predictions
 
@@ -107,8 +163,21 @@ if __name__ == "__main__":
     )
     parser.add_argument("--num_samples", "-N", type=int, default=-1)
     parser.add_argument("--shuffle", action="store_true")
-    parser.add_argument("--batch_size", "-b", type=int, default=10)
-    args, left_argv = parser.parse_known_args()
+    parser.add_argument("--batch_size", "-b", type=int, default=16, help="原 4090 常用 4，高配可 16~24")
+    parser.add_argument(
+        "--root_name",
+        type=str,
+        default="",
+        help='Subdir between path_to_root and image path. Use "" when data is in base_dir/out/.',
+    )
+    parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers，0 最稳；高配可试 4")
+    parser.add_argument(
+        "--save_every",
+        type=int,
+        default=0,
+        help="每处理 N 个 batch 将当前结果写入 save_path 一次（0=仅结束时写）；便于看中间结果与断点保留",
+    )
+    args, _ = parser.parse_known_args()
     args.checkpoint = get_checkpoint(args.checkpoint)
 
-    predictions = test(args)
+    test(args)

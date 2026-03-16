@@ -31,7 +31,15 @@ def compute_metrics(pred, gt, minlen=4):
     metrics["edit_dist"] = edit_distance(pred, gt) / max(len(pred), len(gt))
     reference = gt.split()
     hypothesis = pred.split()
-    metrics["bleu"] = nltk.translate.bleu([reference], hypothesis)
+    # 使用 SmoothingFunction 避免「0 counts of 2/3/4-gram」时的 NLTK 警告，且更合理
+    try:
+        from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+        metrics["bleu"] = sentence_bleu(
+            [reference], hypothesis,
+            smoothing_function=SmoothingFunction().method1,
+        )
+    except Exception:
+        metrics["bleu"] = nltk.translate.bleu([reference], hypothesis)
     try:
         metrics["meteor"] = nltk.translate.meteor([reference], hypothesis)
     except LookupError:

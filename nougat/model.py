@@ -437,6 +437,8 @@ class RunningVarTorch:
     def variance(self):
         if self.values is None:
             return
+        if self.values.shape[1] <= 1:
+            return torch.zeros(self.values.shape[0], device=self.values.device, dtype=self.values.dtype)
         if self.norm:
             return torch.var(self.values, 1) / self.values.shape[1]
         else:
@@ -593,11 +595,16 @@ class NougatModel(PreTrainedModel):
                 encoder_outputs.last_hidden_state.unsqueeze(0)
             )
 
-        # get decoder output
+        # 防复读：仅用软惩罚 + 长度硬兜底，不用 no_repeat_ngram_size，避免破坏 LaTeX 表格/公式中的合法重复
+        # 默认与训练 max_length 对齐（如 2560），避免推理截断严于训练；config 中可设 max_new_tokens 覆盖
+        max_new_tokens = getattr(
+            self.config, "max_new_tokens",
+            getattr(self.config, "max_length", 2560),
+        )
         decoder_output = self.decoder.model.generate(
             encoder_outputs=encoder_outputs,
             min_length=1,
-            max_length=self.config.max_length,
+            max_new_tokens=max_new_tokens,
             pad_token_id=self.decoder.tokenizer.pad_token_id,
             eos_token_id=self.decoder.tokenizer.eos_token_id,
             use_cache=True,
@@ -608,6 +615,7 @@ class NougatModel(PreTrainedModel):
             output_scores=True,
             output_attentions=return_attentions,
             do_sample=False,
+            repetition_penalty=getattr(self.config, "repetition_penalty", 1.15),
             stopping_criteria=StoppingCriteriaList(
                 [StoppingCriteriaScores()] if early_stopping else []
             ),

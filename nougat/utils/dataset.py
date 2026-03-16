@@ -149,8 +149,8 @@ class SciPDFDataset(Dataset):
         template="%s",
     ) -> None:
         super().__init__()
-        self.path_to_index = Path(path_to_index)
-        self.root_name = root_name
+        self.path_to_index = Path(path_to_index).resolve()
+        self.root_name = root_name if root_name is not None else ""
         self.path_to_root = self.path_to_index.parent
         if not split in self.path_to_index.stem:
             pti = self.path_to_root / (template % split + ".jsonl")
