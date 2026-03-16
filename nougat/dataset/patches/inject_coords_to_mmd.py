@@ -96,22 +96,3 @@ def inject_coordinates(
     )
 
     return result
-
-
-def main():
-    mmd_file = Path("/home/ninziwei/lyj/nougat/__test_new/markdown/2402.00041.mmd")
-    fig_info_file = Path("/home/ninziwei/lyj/nougat/__test_new/fig/2402.00041.json")
-
-    with open(mmd_file, "r", encoding="utf-8") as f:
-        mmd_text = f.read()
-
-    with open(fig_info_file, "r", encoding="utf-8") as f:
-        fig_info = json.load(f)
-
-    result = inject_coordinates(mmd_text, fig_info["figures"])
-    with open("result.mmd", "w", encoding="utf-8") as f:
-        f.write(result)
-
-
-if __name__ == "__main__":
-    main()

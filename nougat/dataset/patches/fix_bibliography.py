@@ -86,13 +86,3 @@ def fix_bibliography(html_file, bbl_file):
     with open(html_file, "w") as f:
         f.write(str(soup))
     print(f"✅ Fixed bibliography in {html_file}.")
-
-
-if __name__ == "__main__":
-    bbl_file = "/home/ninziwei/lyj/nougat/__test_1/src/2303.00058/main.bbl"
-    output = parse_bbl(bbl_file)
-
-    with open("output.html", "w", encoding="utf-8") as f:
-        f.write(str(output))
-
-    print("BBL file parsed and saved to output.html.")

@@ -1,10 +1,12 @@
+# 使用前请将 /path/to/workspace 替换为本机路径，或通过命令行覆盖，例如：
+#   python train.py --config config/train_nougat.yaml result_path=/your/result model_path=/your/model ...
 resume_from_checkpoint_path: null
-result_path: "/data1/nzw/model_out/"
-model_path: "/data1/nzw/model/nougat-base"
-pretrained_weight_path: "/data1/nzw/model/nougat-base/aligned_model_weights.pth"
+result_path: "/path/to/workspace/model_out/"
+model_path: "/path/to/workspace/model/nougat-base"
+pretrained_weight_path: "/path/to/workspace/model/nougat-base/aligned_model_weights.pth"
 train_dataset_paths: ["./train.jsonl"]
 val_dataset_paths: ["./validation.jsonl"]
-tokenizer: "/data1/nzw/model/nougat-base/tokenizer.json"
+tokenizer: "/path/to/workspace/model/nougat-base/tokenizer.json"
 exp_name: "nougat_finetune"
 exp_version: "v1"
 train_batch_sizes: [2]

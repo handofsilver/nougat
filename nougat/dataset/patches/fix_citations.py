@@ -36,14 +36,3 @@ def fix_citations(html_file, bbl_file):
         f.write(str(soup))
 
     print(f"✅ Fixed citations in {html_file}")
-
-
-def main():
-    bbl_file = "/home/ninziwei/lyj/nougat/__test_new/src/2303.00058/main.bbl"
-    html_file = "/home/ninziwei/lyj/nougat/__test_new/html/2303.00058/2303.00058.html"
-    citation_map = build_citation_map(bbl_file)
-    fix_citations(html_file, citation_map)
-
-
-if __name__ == "__main__":
-    main()

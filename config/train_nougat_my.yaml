@@ -1,12 +1,15 @@
 # 推理与微调统一使用 GitHub Release 0.1.0-base（见文档：python -m nougat.utils.checkpoint base $MODEL_DIR）
+# 使用前请将 /path/to/workspace 替换为本机路径（如 /data/your_name），或通过命令行覆盖，例如：
+#   export W=/data/your_name
+#   python train.py --config config/train_nougat_my.yaml result_path=$W/nougat_exp model_path=$W/models/nougat-base ...
 # 当前为高配服务器配置（原 4090 24G 为 train_batch_sizes=1, val_batch_sizes=1, accumulate_grad_batches=8, val_check_interval=800）
 resume_from_checkpoint_path: null
-result_path: "/data/yanshiqi/nougat_exp/"
-model_path: "/data/yanshiqi/models/nougat-base"
-pretrained_weight_path: "/data/yanshiqi/models/nougat-base/aligned_model_weights.pth"
-train_dataset_paths: ["/data/yanshiqi/ocr_data/train.jsonl"]
-val_dataset_paths: ["/data/yanshiqi/ocr_data/validation.jsonl"]
-tokenizer: "/data/yanshiqi/models/nougat-base/tokenizer.json"
+result_path: "/path/to/workspace/nougat_exp/"
+model_path: "/path/to/workspace/models/nougat-base"
+pretrained_weight_path: "/path/to/workspace/models/nougat-base/aligned_model_weights.pth"
+train_dataset_paths: ["/path/to/workspace/ocr_data/train.jsonl"]
+val_dataset_paths: ["/path/to/workspace/ocr_data/validation.jsonl"]
+tokenizer: "/path/to/workspace/models/nougat-base/tokenizer.json"
 root_name: ""
 exp_name: "nougat_finetune"
 exp_version: "v3"

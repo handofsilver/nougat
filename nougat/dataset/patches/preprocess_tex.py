@@ -45,10 +45,3 @@ def preprocess_tex(tex_file_path):
 
     with open(tex_file_path, "w", encoding="utf-8") as file:
         file.write(content.strip() + "\n")
-
-
-if __name__ == "__main__":
-    tex_file_path = (
-        "/home/ninziwei/lyj/nougat/__test_1/src/2303.00065/root.tex"  # 替换为你的文件路径
-    )
-    preprocess_tex(tex_file_path)

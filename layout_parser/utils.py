@@ -171,7 +171,7 @@ def create_image_with_text(text, image_width=500, image_height=500):
 
 
 if __name__=='__main__':
-    base_path = '/home/ninziwei/projects/pdf_parser/pdf'
+    base_path = ''
     
     '''测试图像缩放函数'''
     # image_path = f'{base_path}/2202.02506v1/3.png'

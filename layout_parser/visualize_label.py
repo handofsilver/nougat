@@ -170,24 +170,4 @@ def draw_pdf_image():
         out_path = os.path.join(out_base_path, f'{img_num}.png')
         label_visualizer.paint_label_on_graph(page_img, boxes, out_path)
 
-if __name__=='__main__':
-    # draw_single_img()
-
-    # 示例XML文件路径
-    # xml_file = 'C:/SubWork\电网\data\比武\标注大类-保险销子\\5.xml'
-    # parsed_objects = parse_annotation_from_xml(xml_file)
-    # for obj in parsed_objects:
-    #     print(obj)
-
-    # draw_from_xml()
-    # draw_pdf_images()
-
-    # label_visualizer = LabelVisualizer()
-    # label_visualizer.paint_label_on_graph(image, boxes, out_path)
-
-    base_path = '/home/ninziwei/projects/pdf_parser/pdf'
-    pdf_file_path = f'{base_path}/1_3903682737_DSN_Parallel_Randomization_for_Large_Structured_Markov_Chains.pdf'
-    pdf_file_path = f'{base_path}/2202.02506v1.pdf'
-    page_img_list = read_page_dict_from_pdf(pdf_file_path, 400, True)
-    print(len(page_img_list))
 
